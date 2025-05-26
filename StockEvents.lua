@@ -1,4 +1,4 @@
-﻿-- Prevent multiple loads
+-- Prevent multiple loads
 if _G.__STOCKMARKET_CLEAN__ then
     return
 end
@@ -110,8 +110,6 @@ local function GetRandomStockEvent()
         local positive = q:GetUInt8(3) == 1
         local rarity = q:GetUInt8(4)
 
-        -- Rarity weight: 1 (common), 2 (uncommon), 3 (rare), etc.
-        -- Rarer = less weight. Positive events get a slight bonus.
         local baseWeight = 1 / (rarity + 1)
         local bias = positive and 0.05 or 0
         local weight = baseWeight + bias
@@ -128,7 +126,6 @@ local function GetRandomStockEvent()
         totalWeight = totalWeight + weight
     until not q:NextRow()
 
-    -- Pick based on weighted probability
     local r = math.random() * totalWeight
     local sum = 0
     for _, event in ipairs(events) do
@@ -141,6 +138,8 @@ local function GetRandomStockEvent()
     return nil
 end
 
+local __NEXT_STOCK_EVENT_TIME__ = 0
+
 local function TriggerHourlyEvent()
     local event = GetRandomStockEvent()
     if not event then return end
@@ -149,6 +148,7 @@ local function TriggerHourlyEvent()
     local sign = event.positive and "+" or "-"
     local display = string.format("[StockMarket] %s: %s%s%.2f%%|r", event.text, color, sign, math.abs(event.change))
     SendWorldMessage(display)
+    print(display)
 
     local multiplier = 1 + (event.change / 100)
 
@@ -165,11 +165,9 @@ local function TriggerHourlyEvent()
                 newAmount, guid
             ))
 
-            CharDBExecute(string.format([[
-                INSERT INTO character_stockmarket_log
+            CharDBExecute(string.format([[INSERT INTO character_stockmarket_log
                 (guid, event_id, change_amount, resulting_gold, percent_change, description)
-                VALUES (%d, %d, %d, %d, %.2f, 'Market Event: %s')
-            ]],
+                VALUES (%d, %d, %d, %d, %.2f, 'Market Event: %s')]],
                 guid, event.id, delta, math.floor(newAmount / 10000), event.change, event.text
             ))
         until not results:NextRow()
@@ -179,16 +177,32 @@ local function TriggerHourlyEvent()
 end
 
 local function ScheduleNextStockEvent()
-    -- Time between 10 minutes and 60 minutes in milliseconds
     local delay = math.random(600000, 3600000)
+    local minutes = math.floor(delay / 60000)
 
-    print(string.format("[StockMarket] Next stock market event in %d minutes.", math.floor(delay / 60000)))
+    __NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
+    local msg = string.format("[StockMarket] Next stock market event in %d minute%s.", minutes, minutes == 1 and "" or "s")
+    SendWorldMessage(msg)
+    print(msg)
 
     CreateLuaEvent(function()
         TriggerHourlyEvent()
-        ScheduleNextStockEvent() -- Schedule next event recursively
+        ScheduleNextStockEvent()
     end, delay, 1)
 end
+
+local function AnnounceNextStockEventTime()
+    local remaining = __NEXT_STOCK_EVENT_TIME__ - os.time()
+    if remaining > 0 then
+        local minutes = math.ceil(remaining / 60)
+        local msg = string.format("[StockMarket] Next market event in %d minute%s.", minutes, minutes == 1 and "" or "s")
+        SendWorldMessage(msg)
+        print(msg)
+    end
+end
+
+-- Post countdown every 10 minutes
+CreateLuaEvent(AnnounceNextStockEventTime, 600000, 0)
 
 ScheduleNextStockEvent()
 
@@ -228,7 +242,9 @@ local function OnGMCommand(event, player, command)
 
             _G.__CURRENT_STOCK_EVENT__ = event
             TriggerHourlyEvent()
-            player:SendBroadcastMessage(string.format("|cff00ff00[StockMarket]|r Manual event %d triggered: %s", event.id, event.text))
+            local msg = string.format("|cff00ff00[StockMarket]|r Manual event %d triggered: %s", event.id, event.text)
+            player:SendBroadcastMessage(msg)
+            print(msg)
         else
             TriggerHourlyEvent()
         end
