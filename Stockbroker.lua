@@ -6,7 +6,6 @@ local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:16:16:0:0|t"
 local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:16:16:0:0|t"
 local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:16:16:0:0|t"
 
--- Format copper into gold/silver/copper string with icons
 local function FormatGold(copper)
     local gold = math.floor(copper / 10000)
     local silver = math.floor((copper % 10000) / 100)
@@ -14,13 +13,19 @@ local function FormatGold(copper)
     return string.format("%d%s %d%s %d%s", gold, GOLD_ICON, silver, SILVER_ICON, copperRest, COPPER_ICON)
 end
 
--- Get invested copper amount for player GUID
 local function GetInvested(guid)
     local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
     return q and tonumber(q:GetRow(0).InvestedMoney) or 0
 end
 
--- Show gossip menu
+local function LogTransaction(guid, event_id, change_amount, resulting_gold, description)
+    CharDBExecute(string.format([[
+        INSERT INTO character_stockmarket_log
+        (guid, event_id, change_amount, percent_change, resulting_gold, description, created_at)
+        VALUES (%d, %d, %d, 0, %d, '%s', NOW())
+    ]], guid, event_id, change_amount, resulting_gold, description))
+end
+
 local function OnGossipHello(event, player, creature)
     player:GossipClearMenu()
 
@@ -30,7 +35,6 @@ local function OnGossipHello(event, player, creature)
 
     player:GossipMenuAddItem(0, "Total Invested: " .. investedGold, 1, 99999)
 
-    -- Input boxes for deposit/withdraw with custom prompt
     player:GossipMenuAddItem(
         0,
         "|cFFFFFF00[Deposit Gold]|r",
@@ -52,7 +56,6 @@ local function OnGossipHello(event, player, creature)
     player:GossipSendMenu(1, creature)
 end
 
--- Handle deposit/withdraw logic based on input
 local function OnGossipSelect(event, player, creature, sender, intid, code)
     local guid = player:GetGUIDLow()
 
@@ -68,6 +71,10 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
                     VALUES (%d, %d, NOW())
                     ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + %d, last_updated = NOW()
                 ]], guid, copper, copper))
+
+                local newTotal = GetInvested(guid)
+                LogTransaction(guid, 1, copper, newTotal, "Player deposited gold.")
+
                 player:ModifyMoney(-copper)
                 player:SendBroadcastMessage(string.format("|cff00ff00Deposited %s.|r", FormatGold(copper)))
             else
@@ -83,10 +90,16 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
             local copper = amount * 10000
             local invested = GetInvested(guid)
             if invested >= copper then
-                CharDBExecute(string.format(
-                    "UPDATE character_stockmarket SET InvestedMoney = InvestedMoney - %d, last_updated = NOW() WHERE guid = %d",
-                    copper, guid
-                ))
+                CharDBExecute(string.format([[
+                    UPDATE character_stockmarket
+                    SET InvestedMoney = InvestedMoney - %d,
+                        last_updated = NOW()
+                    WHERE guid = %d
+                ]], copper, guid))
+
+                local newTotal = invested - copper
+                LogTransaction(guid, 2, -copper, newTotal, "Player withdrew gold.")
+
                 player:ModifyMoney(copper)
                 player:SendBroadcastMessage(string.format("|cff00ff00Withdrew %s.|r", FormatGold(copper)))
             else
