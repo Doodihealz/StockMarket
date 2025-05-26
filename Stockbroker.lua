@@ -60,11 +60,12 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
     local guid = player:GetGUIDLow()
 
     if intid == INPUT_DEPOSIT then
-        local amount = tonumber(code)
-        if not amount or amount <= 0 then
+        local cleaned = string.gsub(code or "", "[^%d]", "")
+        local gold = tonumber(cleaned)
+        if not gold or gold <= 0 then
             player:SendBroadcastMessage("|cffff0000Invalid gold amount.|r")
         else
-            local copper = amount * 10000
+            local copper = gold * 10000
             if player:GetCoinage() >= copper then
                 CharDBExecute(string.format([[
                     INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
@@ -74,20 +75,20 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
 
                 local newTotal = GetInvested(guid)
                 LogTransaction(guid, 1, copper, newTotal, "Player deposited gold.")
-
                 player:ModifyMoney(-copper)
-                player:SendBroadcastMessage(string.format("|cff00ff00Deposited %s.|r", FormatGold(copper)))
+                player:SendBroadcastMessage(string.format("|cff00ff00Deposited %d%s.|r", gold, GOLD_ICON))
             else
                 player:SendBroadcastMessage("|cffff0000Not enough gold.|r")
             end
         end
 
     elseif intid == INPUT_WITHDRAW then
-        local amount = tonumber(code)
-        if not amount or amount <= 0 then
+        local cleaned = string.gsub(code or "", "[^%d]", "")
+        local gold = tonumber(cleaned)
+        if not gold or gold <= 0 then
             player:SendBroadcastMessage("|cffff0000Invalid gold amount.|r")
         else
-            local copper = amount * 10000
+            local copper = gold * 10000
             local invested = GetInvested(guid)
             if invested >= copper then
                 CharDBExecute(string.format([[
@@ -99,9 +100,8 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
 
                 local newTotal = invested - copper
                 LogTransaction(guid, 2, -copper, newTotal, "Player withdrew gold.")
-
                 player:ModifyMoney(copper)
-                player:SendBroadcastMessage(string.format("|cff00ff00Withdrew %s.|r", FormatGold(copper)))
+                player:SendBroadcastMessage(string.format("|cff00ff00Withdrew %d%s.|r", gold, GOLD_ICON))
             else
                 player:SendBroadcastMessage("|cffff0000Not enough invested funds.|r")
             end
