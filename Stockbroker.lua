@@ -20,12 +20,20 @@ local function GetInvested(guid)
     return q and tonumber(q:GetRow(0).InvestedMoney) or 0
 end
 
-local function LogTransaction(guid, event_id, change_amount, resulting_gold, description)
+local function GetActiveStockEvent()
+    return _G.__CURRENT_STOCK_EVENT__ or { id = "NULL", change = "0" }
+end
+
+local function LogTransaction(guid, event_id, change_copper, resulting_copper, description)
+    local goldChange = change_copper / 10000
+    local goldTotal = math.floor(resulting_copper / 10000)
+    local event = GetActiveStockEvent()
+
     CharDBExecute(string.format([[
         INSERT INTO character_stockmarket_log
         (guid, event_id, change_amount, percent_change, resulting_gold, description, created_at)
-        VALUES (%d, %d, %d, 0, %d, '%s', NOW())
-    ]], guid, event_id, change_amount, resulting_gold, description))
+        VALUES (%d, %s, %.2f, %s, %d, '%s', NOW())
+    ]], guid, tostring(event.id), goldChange, tostring(event.change), goldTotal, description))
 end
 
 local function OnGossipHello(event, player, creature)
@@ -36,7 +44,6 @@ local function OnGossipHello(event, player, creature)
     local investedGold = FormatGold(investedCopper)
 
     player:GossipMenuAddItem(0, "Total Invested: " .. investedGold, 1, 99999)
-
     player:GossipMenuAddItem(0, "|cFFFFFF00[Deposit Gold]|r", 1, INPUT_DEPOSIT, true, "Insert the amount of gold you want to deposit:")
     player:GossipMenuAddItem(0, "|cFFFFFF00[Withdraw Gold]|r", 1, INPUT_WITHDRAW, true, "Insert the amount of gold you want to withdraw:")
 
@@ -70,14 +77,16 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
     if intid == INPUT_DEPOSIT then
         local playerCopper = player:GetCoinage()
         if playerCopper >= copper then
+            local current = GetInvested(guid)
+            local total = current + copper
+
             CharDBExecute(string.format([[
                 INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
                 VALUES (%d, %d, NOW())
-                ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + %d, last_updated = NOW()
-            ]], guid, copper, copper))
+                ON DUPLICATE KEY UPDATE InvestedMoney = VALUES(InvestedMoney), last_updated = NOW()
+            ]], guid, total))
 
-            local newTotal = GetInvested(guid)
-            LogTransaction(guid, 1, copper, newTotal, "Player deposited gold.")
+            LogTransaction(guid, 1, copper, total, "Player deposited gold.")
             player:ModifyMoney(-copper)
             player:SendBroadcastMessage(string.format("|cff00ff00Deposited %d%s.|r", gold, GOLD_ICON))
         else
@@ -85,17 +94,17 @@ local function OnGossipSelect(event, player, creature, sender, intid, code)
         end
 
     elseif intid == INPUT_WITHDRAW then
-        local invested = GetInvested(guid)
-        if invested >= copper then
+        local current = GetInvested(guid)
+        if current >= copper then
+            local total = current - copper
+
             CharDBExecute(string.format([[
                 UPDATE character_stockmarket
-                SET InvestedMoney = InvestedMoney - %d,
-                    last_updated = NOW()
+                SET InvestedMoney = %d, last_updated = NOW()
                 WHERE guid = %d
-            ]], copper, guid))
+            ]], total, guid))
 
-            local newTotal = invested - copper
-            LogTransaction(guid, 2, -copper, newTotal, "Player withdrew gold.")
+            LogTransaction(guid, 2, -copper, total, "Player withdrew gold.")
             player:ModifyMoney(copper)
             player:SendBroadcastMessage(string.format("|cff00ff00Withdrew %d%s.|r", gold, GOLD_ICON))
         else
@@ -108,41 +117,3 @@ end
 
 RegisterCreatureGossipEvent(STOCK_BROKER_NPC_ID, 1, OnGossipHello)
 RegisterCreatureGossipEvent(STOCK_BROKER_NPC_ID, 2, OnGossipSelect)
-
-function Handlers.Deposit(player, copper)
-    local guid = player:GetGUIDLow()
-    if type(copper) ~= "number" then
-        AIO.Msg():Add("StockMarket", "DepositResult", false, "Invalid amount."):Send(player)
-        return
-    end
-
-    copper = math.floor(copper * 10000)
-
-    if copper < 10000 then
-        AIO.Msg():Add("StockMarket", "DepositResult", false, "Minimum deposit is 1 gold."):Send(player)
-        return
-    end
-
-    if player:GetCoinage() < copper then
-        AIO.Msg():Add("StockMarket", "DepositResult", false, "Not enough funds."):Send(player)
-        return
-    end
-
-    player:ModifyMoney(-copper)
-
-    CharDBExecute(string.format([[
-        INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
-        VALUES (%d, %d, NOW())
-        ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + %d, last_updated = NOW()
-    ]], guid, copper, copper))
-
-    local newTotal = GetInvested(guid)
-    local event = GetActiveStockEvent()
-
-    CharDBExecute(string.format([[
-        INSERT INTO character_stockmarket_log (guid, event_id, change_amount, resulting_gold, percent_change, description)
-        VALUES (%d, %s, %d, %d, %s, 'Deposit')
-    ]], guid, tostring(event.id), copper, math.floor(newTotal / 10000), tostring(event.change)))
-
-    AIO.Msg():Add("StockMarket", "DepositResult", true, copper):Add("StockMarket", "InvestedGold", newTotal):Send(player)
-end
