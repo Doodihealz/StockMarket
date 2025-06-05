@@ -1,27 +1,32 @@
--- Prevent multiple loads
-if _G.__STOCKMARKET_CLEAN__ then
-    return
-end
+if _G.__STOCKMARKET_CLEAN__ then return end
 _G.__STOCKMARKET_CLEAN__ = true
 
--- Clean old log entries every 24 hours
-local function CleanOldStockLogs()
-    CharDBExecute([[DELETE FROM character_stockmarket_log WHERE log_time < NOW() - INTERVAL 30 DAY]])
+local function GetNextLogEventID()
+    local q = CharDBQuery("SELECT MAX(event_id) FROM character_stockmarket_log")
+    if q and not q:IsNull(0) then
+        return q:GetUInt32(0) + 1
+    else
+        return 1
+    end
 end
+
+local __NEXT_LOG_EVENT_ID__ = GetNextLogEventID()
+
+local function CleanOldStockLogs()
+    CharDBExecute("TRUNCATE TABLE character_stockmarket_log")
+end
+
 CreateLuaEvent(CleanOldStockLogs, 86400000, 0)
 
--- Get investment amount from DB
 local function GetInvested(guid)
     local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
     return q and tonumber(q:GetRow(0).InvestedMoney) or 0
 end
 
--- Get latest stock event from global
 local function GetActiveStockEvent()
     return _G.__CURRENT_STOCK_EVENT__ or { id = "NULL", change = "NULL" }
 end
 
--- AIO registration (deferred until AIO is ready)
 local function RegisterHandlers()
     if not AIO then
         CreateLuaEvent(RegisterHandlers, 1000, 1)
@@ -49,12 +54,19 @@ local function RegisterHandlers()
         local total = GetInvested(guid) + copper
         local event = GetActiveStockEvent()
 
-        CharDBExecute(string.format([[INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
+        CharDBExecute(string.format([[
+            INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
             VALUES (%d, %d, NOW())
-            ON DUPLICATE KEY UPDATE InvestedMoney = VALUES(InvestedMoney), last_updated = NOW()]], guid, total))
+            ON DUPLICATE KEY UPDATE InvestedMoney = VALUES(InvestedMoney), last_updated = NOW()
+        ]], guid, total))
 
-        CharDBExecute(string.format([[INSERT INTO character_stockmarket_log (guid, event_id, change_amount, resulting_gold, percent_change, description)
-            VALUES (%d, %s, %d, %d, %s, 'Deposit')]], guid, tostring(event.id), copper, math.floor(total / 10000), tostring(event.change)))
+        CharDBExecute(string.format([[
+    INSERT INTO character_stockmarket_log
+    (guid, event_id, change_amount, percent_change, resulting_gold, description, created_at)
+    VALUES (%d, %d, %d, %.2f, %d, 'Market Event: %s', NOW())
+]], guid, __NEXT_LOG_EVENT_ID__, copper, event.change, math.floor(total / 10000), event.text))
+
+        __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 
         AIO.Msg():Add("StockMarket", "DepositResult", true, copper):Add("StockMarket", "InvestedGold", total):Send(player)
     end
@@ -77,8 +89,10 @@ local function RegisterHandlers()
 
         CharDBExecute(string.format("UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE guid = %d", total, guid))
 
-        CharDBExecute(string.format([[INSERT INTO character_stockmarket_log (guid, event_id, change_amount, resulting_gold, percent_change, description)
-            VALUES (%d, %s, %d, %d, %s, 'Withdraw')]], guid, tostring(event.id), -copper, math.floor(total / 10000), tostring(event.change)))
+        CharDBExecute(string.format([[
+            INSERT INTO character_stockmarket_log (guid, event_id, change_amount, resulting_gold, percent_change, description)
+            VALUES (%d, %s, %d, %d, %s, 'Withdraw')
+        ]], guid, tostring(event.id), -copper, math.floor(total / 10000), tostring(event.change)))
 
         player:ModifyMoney(copper)
 
@@ -165,11 +179,11 @@ local function TriggerHourlyEvent()
                 newAmount, guid
             ))
 
-            CharDBExecute(string.format([[INSERT INTO character_stockmarket_log
+            CharDBExecute(string.format([[
+                INSERT INTO character_stockmarket_log
                 (guid, event_id, change_amount, resulting_gold, percent_change, description)
-                VALUES (%d, %d, %d, %d, %.2f, 'Market Event: %s')]],
-                guid, event.id, delta, math.floor(newAmount / 10000), event.change, event.text
-            ))
+                VALUES (%d, %d, %d, %d, %.2f, 'Market Event: %s')
+            ]], guid, event.id, delta, math.floor(newAmount / 10000), event.change, event.text))
         until not results:NextRow()
     end
 
@@ -201,12 +215,10 @@ local function AnnounceNextStockEventTime()
     end
 end
 
--- Post countdown every 10 minutes
 CreateLuaEvent(AnnounceNextStockEventTime, 600000, 0)
 
 ScheduleNextStockEvent()
 
--- GM command: .stockevent
 local function OnGMCommand(event, player, command)
     local args = {}
     for word in command:gmatch("%S+") do
@@ -253,4 +265,42 @@ local function OnGMCommand(event, player, command)
     end
 end
 
+local __STOCKDATA_COOLDOWNS__ = {}
+
+local function OnStockDataCommand(event, player, command)
+    if command:lower():gsub("[#./]", "") ~= "stockdata" then return end
+
+    local guid = player:GetGUIDLow()
+    local now = os.time()
+
+    if not player:IsGM() then
+        local lastUsed = __STOCKDATA_COOLDOWNS__[guid] or 0
+        if now - lastUsed < 300 then
+            player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
+            return false
+        end
+        __STOCKDATA_COOLDOWNS__[guid] = now
+    end
+
+    local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
+    if not q or q:IsNull(0) then
+        player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No money in stock market. Go invest!")
+        return false
+    end
+
+    local copper = q:GetUInt32(0)
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local remainingCopper = copper % 100
+
+    local msg = string.format(
+        "|cff00ff00[StockMarket]|r Your investment: %d|TInterface\\MoneyFrame\\UI-GoldIcon:0|t %d|TInterface\\MoneyFrame\\UI-SilverIcon:0|t %d|TInterface\\MoneyFrame\\UI-CopperIcon:0|t",
+        gold, silver, remainingCopper
+    )
+    player:SendBroadcastMessage(msg)
+
+    return false
+end
+
+RegisterPlayerEvent(42, OnStockDataCommand)
 RegisterPlayerEvent(42, OnGMCommand)
