@@ -243,6 +243,27 @@ end
 RegisterPlayerEvent(42, OnStockDataCommand)
 RegisterPlayerEvent(42, OnGMCommand)
 
+local function OnStockTimerCommand(event, player, command)
+    if command:lower():gsub("[#./]", "") ~= "stocktimer" then return end
+
+    local function eta(ms)
+        return string.format("%d minutes", math.floor(ms / 60000))
+    end
+
+    local microETA = eta(GetTierDelay("micro"))
+    local minorETA = eta(GetTierDelay("minor"))
+    local majorChance = math.random() <= 0.10
+    local majorETA = majorChance and eta(GetTierDelay("major")) or "Not expected within the next hour"
+
+    player:SendBroadcastMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
+    player:SendBroadcastMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
+    player:SendBroadcastMessage("[StockMarket] Major event ETA: " .. majorETA .. ".")
+
+    return false
+end
+
+RegisterPlayerEvent(42, OnStockTimerCommand)
+
 local function OnPlayerLogin(event, player)
     local function eta(ms)
         return string.format("%d minutes", math.floor(ms / 60000))
