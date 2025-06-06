@@ -10,11 +10,7 @@ This script introduces a dynamic, in-game stock market system to World of Warcra
 ## Features
 
 * NPC Stock Broker (entry 90001) handles deposits and withdrawals without penalties.
-* Automated, tiered market events occur every 10–60 minutes:
-
-  * **Micro**: 0.1–1.0%, fires every 10–20 minutes
-  * **Minor**: 1.1–3.0%, fires every 20–30 minutes
-  * **Major**: 3.1–10.0%, has 10% chance, at most once per hour
+* Automated market events occur every 10–60 minutes:
 * Events are either positive or negative, with a mild bias toward positive changes.
 * All changes are recorded in `character_stockmarket_log` in the `acore_characters` database.
 * Individual investment tracking per character (not account-wide).
@@ -23,7 +19,7 @@ This script introduces a dynamic, in-game stock market system to World of Warcra
 * Check how much is in your account with the `.stockdata` command. Has a 5 minute cooldown between uses.
 * Comedic, lore-themed events included for extra fun.
 * Players see ETA announcements on login.
-* Server automatically announces ETA for all tiers on each scheduled event.
+* Server automatically announces ETA for the stockevent.
 
 ## Installation
 
