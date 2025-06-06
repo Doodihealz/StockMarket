@@ -27,10 +27,91 @@ local function GetActiveStockEvent()
     return _G.__CURRENT_STOCK_EVENT__ or { id = "NULL", change = "NULL" }
 end
 
-local function GetRandomStockEventByRange(minChange, maxChange)
-    local q = WorldDBQuery(string.format([[SELECT id, event_text, percent_change, is_positive, rarity
-        FROM stockmarket_events WHERE ABS(percent_change) BETWEEN %.2f AND %.2f]], minChange, maxChange))
+local function RegisterHandlers()
+    if not AIO then
+        CreateLuaEvent(RegisterHandlers, 1000, 1)
+        return
+    end
 
+    if _G.__STOCKMARKET_HANDLERS_REGISTERED__ then return end
+    _G.__STOCKMARKET_HANDLERS_REGISTERED__ = true
+
+    local Handlers = {}
+
+    function Handlers.Deposit(player, copper)
+        local guid = player:GetGUIDLow()
+        if type(copper) ~= "number" or copper < 10000 then
+            AIO.Msg():Add("StockMarket", "DepositResult", false, "Minimum deposit is 1 gold."):Send(player)
+            return
+        end
+
+        if player:GetCoinage() < copper then
+            AIO.Msg():Add("StockMarket", "DepositResult", false, "Not enough funds."):Send(player)
+            return
+        end
+
+        player:ModifyMoney(-copper)
+        local total = GetInvested(guid) + copper
+        local event = GetActiveStockEvent()
+
+        CharDBExecute(string.format([[
+            INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
+            VALUES (%d, %d, NOW())
+            ON DUPLICATE KEY UPDATE InvestedMoney = VALUES(InvestedMoney), last_updated = NOW()
+        ]], guid, total))
+
+        CharDBExecute(string.format([[
+    INSERT INTO character_stockmarket_log
+    (guid, event_id, change_amount, percent_change, resulting_gold, description, created_at)
+    VALUES (%d, %d, %d, %.2f, %d, 'Market Event: %s', NOW())
+]], guid, __NEXT_LOG_EVENT_ID__, copper, event.change, math.floor(total / 10000), event.text))
+
+        __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
+
+        AIO.Msg():Add("StockMarket", "DepositResult", true, copper):Add("StockMarket", "InvestedGold", total):Send(player)
+    end
+
+    function Handlers.Withdraw(player, copper)
+        local guid = player:GetGUIDLow()
+        if type(copper) ~= "number" or copper < 1 then
+            AIO.Msg():Add("StockMarket", "WithdrawResult", false, "Minimum withdraw is 1 copper."):Send(player)
+            return
+        end
+
+        local invested = GetInvested(guid)
+        if copper > invested then
+            AIO.Msg():Add("StockMarket", "WithdrawResult", false, "Insufficient invested funds."):Send(player)
+            return
+        end
+
+        local total = invested - copper
+        local event = GetActiveStockEvent()
+
+        CharDBExecute(string.format("UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE guid = %d", total, guid))
+
+        CharDBExecute(string.format([[
+            INSERT INTO character_stockmarket_log (guid, event_id, change_amount, resulting_gold, percent_change, description)
+            VALUES (%d, %s, %d, %d, %s, 'Withdraw')
+        ]], guid, tostring(event.id), -copper, math.floor(total / 10000), tostring(event.change)))
+
+        player:ModifyMoney(copper)
+
+        AIO.Msg():Add("StockMarket", "WithdrawResult", true, copper):Add("StockMarket", "InvestedGold", total):Send(player)
+    end
+
+    function Handlers.Query(player)
+        local guid = player:GetGUIDLow()
+        local total = GetInvested(guid)
+        AIO.Msg():Add("StockMarket", "InvestedGold", total):Send(player)
+    end
+
+    AIO.AddHandlers("StockMarket", Handlers)
+end
+
+CreateLuaEvent(RegisterHandlers, 0, 1)
+
+local function GetRandomStockEvent()
+    local q = WorldDBQuery("SELECT id, event_text, percent_change, is_positive, rarity FROM stockmarket_events")
     if not q then return nil end
 
     local events = {}
@@ -42,11 +123,20 @@ local function GetRandomStockEventByRange(minChange, maxChange)
         local change = q:GetFloat(2)
         local positive = q:GetUInt8(3) == 1
         local rarity = q:GetUInt8(4)
+
         local baseWeight = 1 / (rarity + 1)
         local bias = positive and 0.05 or 0
         local weight = baseWeight + bias
 
-        table.insert(events, { id = id, text = text, change = change, positive = positive, rarity = rarity, weight = weight })
+        table.insert(events, {
+            id = id,
+            text = text,
+            change = change,
+            positive = positive,
+            rarity = rarity,
+            weight = weight
+        })
+
         totalWeight = totalWeight + weight
     until not q:NextRow()
 
@@ -54,48 +144,29 @@ local function GetRandomStockEventByRange(minChange, maxChange)
     local sum = 0
     for _, event in ipairs(events) do
         sum = sum + event.weight
-        if r <= sum then return event end
+        if r <= sum then
+            return event
+        end
     end
+
     return nil
 end
 
-local function PickEventTier()
-    local roll = math.random()
-    if roll <= 0.10 then return "major" end
-    if roll <= 0.50 then return "minor" end
-    return "micro"
-end
-
-local function GetTierRange(tier)
-    if tier == "micro" then return 0.1, 1.0 end
-    if tier == "minor" then return 1.1, 3.0 end
-    if tier == "major" then return 3.1, 10.0 end
-end
-
-local function GetTierDelay(tier)
-    if tier == "micro" then return math.random(600000, 1200000) end
-    if tier == "minor" then return math.random(1200000, 1800000) end
-    if tier == "major" then return math.random(1800000, 3600000) end
-end
-
 local __NEXT_STOCK_EVENT_TIME__ = 0
-local __NEXT_MICRO_EVENT_TIME__ = 0
-local __NEXT_MINOR_EVENT_TIME__ = 0
-local __NEXT_MAJOR_EVENT_TIME__ = 0
 
-local function TriggerStockEvent()
-    local event = _G.__CURRENT_STOCK_EVENT__
+local function TriggerHourlyEvent()
+    local event = GetRandomStockEvent()
     if not event then return end
 
     local color = event.positive and "|cff00ff00" or "|cffff0000"
     local sign = event.positive and "+" or "-"
     local display = string.format("[StockMarket] %s: %s%s%.2f%%|r", event.text, color, sign, math.abs(event.change))
     SendWorldMessage(display)
-    print((string.gsub(display, "|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
+    print(display)
 
     local multiplier = 1 + (event.change / 100)
-    local results = CharDBQuery("SELECT guid, InvestedMoney FROM character_stockmarket WHERE InvestedMoney > 0")
 
+    local results = CharDBQuery("SELECT guid, InvestedMoney FROM character_stockmarket WHERE InvestedMoney > 0")
     if results then
         repeat
             local guid = results:GetUInt32(0)
@@ -103,104 +174,50 @@ local function TriggerStockEvent()
             local newAmount = math.floor(invested * multiplier)
             local delta = newAmount - invested
 
-            CharDBExecute(string.format("UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE guid = %d", newAmount, guid))
+            CharDBExecute(string.format(
+                "UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE guid = %d",
+                newAmount, guid
+            ))
 
-            CharDBExecute(string.format([[INSERT INTO character_stockmarket_log
+            CharDBExecute(string.format([[
+                INSERT INTO character_stockmarket_log
                 (guid, event_id, change_amount, resulting_gold, percent_change, description)
-                VALUES (%d, %d, %d, %d, %.2f, 'Market Event: %s')]],
-                guid, event.id, delta, math.floor(newAmount / 10000), event.change, event.text))
+                VALUES (%d, %d, %d, %d, %.2f, 'Market Event: %s')
+            ]], guid, event.id, delta, math.floor(newAmount / 10000), event.change, event.text))
         until not results:NextRow()
     end
+
+    _G.__CURRENT_STOCK_EVENT__ = event
 end
 
 local function ScheduleNextStockEvent()
-    local tier = PickEventTier()
-    local minChange, maxChange = GetTierRange(tier)
-    local delay = GetTierDelay(tier)
+    local delay = math.random(600000, 3600000)
     local minutes = math.floor(delay / 60000)
+
     __NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
-
-    local now = os.time()
-    __NEXT_MICRO_EVENT_TIME__ = now + math.floor(GetTierDelay("micro") / 1000)
-    __NEXT_MINOR_EVENT_TIME__ = now + math.floor(GetTierDelay("minor") / 1000)
-    __NEXT_MAJOR_EVENT_TIME__ = now + (math.random() <= 0.10 and math.floor(GetTierDelay("major") / 1000) or 3600)
-
-    local microETA = math.floor(GetTierDelay("micro") / 60000)
-    local minorETA = math.floor(GetTierDelay("minor") / 60000)
-    local majorRoll = math.random()
-    local majorETA = majorRoll <= 0.10 and math.floor(GetTierDelay("major") / 60000) or nil
-
-    SendWorldMessage("[StockMarket] Micro event ETA: " .. microETA .. " minutes.")
-    SendWorldMessage("[StockMarket] Minor event ETA: " .. minorETA .. " minutes.")
-    if majorETA then
-        SendWorldMessage("[StockMarket] Major event ETA: " .. majorETA .. " minutes.")
-    else
-        SendWorldMessage("[StockMarket] Major event ETA: Not expected within the next hour.")
-    end
+    local msg = string.format("[StockMarket] Next stock market event in %d minute%s.", minutes, minutes == 1 and "" or "s")
+    SendWorldMessage(msg)
+    print(msg)
 
     CreateLuaEvent(function()
-        local event = GetRandomStockEventByRange(minChange, maxChange)
-        if event then
-            _G.__CURRENT_STOCK_EVENT__ = event
-            TriggerStockEvent()
-        end
+        TriggerHourlyEvent()
         ScheduleNextStockEvent()
     end, delay, 1)
 end
 
 local function AnnounceNextStockEventTime()
-    local now = os.time()
-    local function remaining(sec)
-        local min = math.floor(sec / 60)
-        return min > 0 and (min .. " minutes") or "less than a minute"
+    local remaining = __NEXT_STOCK_EVENT_TIME__ - os.time()
+    if remaining > 0 then
+        local minutes = math.ceil(remaining / 60)
+        local msg = string.format("[StockMarket] Next market event in %d minute%s.", minutes, minutes == 1 and "" or "s")
+        SendWorldMessage(msg)
+        print(msg)
     end
-
-    local microETA = remaining(__NEXT_MICRO_EVENT_TIME__ - now)
-    local minorETA = remaining(__NEXT_MINOR_EVENT_TIME__ - now)
-    local majorETA = (__NEXT_MAJOR_EVENT_TIME__ - now > 3600) and "Not expected within the next hour" or remaining(__NEXT_MAJOR_EVENT_TIME__ - now)
-
-    SendWorldMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
-    SendWorldMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
-    SendWorldMessage("[StockMarket] Major event ETA: " .. majorETA .. ".")
 end
 
 CreateLuaEvent(AnnounceNextStockEventTime, 600000, 0)
+
 ScheduleNextStockEvent()
-
-local __STOCKDATA_COOLDOWNS__ = {}
-
-local function OnStockDataCommand(event, player, command)
-    if command:lower():gsub("[#./]", "") ~= "stockdata" then return end
-
-    local guid = player:GetGUIDLow()
-    local now = os.time()
-
-    if not player:IsGM() then
-        local lastUsed = __STOCKDATA_COOLDOWNS__[guid] or 0
-        if now - lastUsed < 300 then
-            player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
-            return false
-        end
-        __STOCKDATA_COOLDOWNS__[guid] = now
-    end
-
-    local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
-    if not q or q:IsNull(0) then
-        player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No money in stock market. Go invest!")
-        return false
-    end
-
-    local copper = q:GetUInt32(0)
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local remainingCopper = copper % 100
-
-    local msg = string.format("|cff00ff00[StockMarket]|r Your investment: %d|TInterface\\MoneyFrame\\UI-GoldIcon:0|t %d|TInterface\\MoneyFrame\\UI-SilverIcon:0|t %d|TInterface\\MoneyFrame\\UI-CopperIcon:0|t",
-        gold, silver, remainingCopper)
-    player:SendBroadcastMessage(msg)
-
-    return false
-end
 
 local function OnGMCommand(event, player, command)
     local args = {}
@@ -236,63 +253,67 @@ local function OnGMCommand(event, player, command)
             }
 
             _G.__CURRENT_STOCK_EVENT__ = event
-            TriggerStockEvent()
+            TriggerHourlyEvent()
             local msg = string.format("|cff00ff00[StockMarket]|r Manual event %d triggered: %s", event.id, event.text)
             player:SendBroadcastMessage(msg)
             print(msg)
         else
-            local tier = PickEventTier()
-            local minChange, maxChange = GetTierRange(tier)
-            local event = GetRandomStockEventByRange(minChange, maxChange)
-            if event then
-                _G.__CURRENT_STOCK_EVENT__ = event
-                TriggerStockEvent()
-            end
+            TriggerHourlyEvent()
         end
 
         return false
     end
 end
 
-RegisterPlayerEvent(42, OnStockDataCommand)
-RegisterPlayerEvent(42, OnGMCommand)
+local __STOCKDATA_COOLDOWNS__ = {}
 
-local function OnStockTimerCommand(event, player, command)
-    if command:lower():gsub("[#./]", "") ~= "stocktimer" then return end
+local function OnStockDataCommand(event, player, command)
+    local cmd = command:lower():gsub("[#./]", "")
+    if cmd ~= "stockdata" and cmd ~= "stocktimer" then return end
 
-    local function remaining(sec)
-        local min = math.floor(sec / 60)
-        return min > 0 and (min .. " minutes") or "less than a minute"
+    local guid = player:GetGUIDLow()
+    local now = os.time()
+
+    if cmd == "stocktimer" then
+        local remaining = __NEXT_STOCK_EVENT_TIME__ - now
+        if remaining > 0 then
+            local minutes = math.ceil(remaining / 60)
+            local msg = string.format("|cff00ff00[StockMarket]|r Next market event in %d minute%s.", minutes, minutes == 1 and "" or "s")
+            player:SendBroadcastMessage(msg)
+        else
+            player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No market event is currently scheduled.")
+        end
+        return false
     end
 
-    local now = os.time()
-    local microETA = remaining(__NEXT_MICRO_EVENT_TIME__ - now)
-    local minorETA = remaining(__NEXT_MINOR_EVENT_TIME__ - now)
-    local majorETA = (__NEXT_MAJOR_EVENT_TIME__ - now > 3600) and "Not expected within the next hour" or remaining(__NEXT_MAJOR_EVENT_TIME__ - now)
+    if not player:IsGM() then
+        local lastUsed = __STOCKDATA_COOLDOWNS__[guid] or 0
+        if now - lastUsed < 300 then
+            player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
+            return false
+        end
+        __STOCKDATA_COOLDOWNS__[guid] = now
+    end
 
-    player:SendBroadcastMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
-    player:SendBroadcastMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
-    player:SendBroadcastMessage("[StockMarket] Major event ETA: " .. majorETA .. ".")
+    local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
+    if not q or q:IsNull(0) then
+        player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No money in stock market. Go invest!")
+        return false
+    end
+
+    local copper = q:GetUInt32(0)
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local remainingCopper = copper % 100
+
+    local msg = string.format(
+        "|cff00ff00[StockMarket]|r Your investment: %d|TInterface\\MoneyFrame\\UI-GoldIcon:0|t %d|TInterface\\MoneyFrame\\UI-SilverIcon:0|t %d|TInterface\\MoneyFrame\\UI-CopperIcon:0|t",
+        gold, silver, remainingCopper
+    )
+    player:SendBroadcastMessage(msg)
 
     return false
 end
 
-RegisterPlayerEvent(42, OnStockTimerCommand)
-
-local function OnPlayerLogin(event, player)
-    local function remaining(sec)
-        local min = math.floor(sec / 60)
-        return min > 0 and (min .. " minutes") or "less than a minute"
-    end
-
-    local now = os.time()
-    local microETA = remaining(__NEXT_MICRO_EVENT_TIME__ - now)
-    local minorETA = remaining(__NEXT_MINOR_EVENT_TIME__ - now)
-    local majorETA = (__NEXT_MAJOR_EVENT_TIME__ - now > 3600) and "Not expected within the next hour" or remaining(__NEXT_MAJOR_EVENT_TIME__ - now)
-
-    player:SendBroadcastMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
-    player:SendBroadcastMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
-    player:SendBroadcastMessage("[StockMarket] Major event ETA: " .. majorETA .. ".")
-end
-
-RegisterPlayerEvent(3, OnPlayerLogin)
+RegisterPlayerEvent(42, OnStockDataCommand)
+RegisterPlayerEvent(42, OnGMCommand)
