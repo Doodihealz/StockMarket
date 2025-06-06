@@ -43,7 +43,7 @@ This script introduces a dynamic, in-game stock market system to World of Warcra
 ## Event Control
 
 * `.stockevent`
-  Triggers a specific event ID or, if none provided, a random micro/minor/major tier event. Does **not** reset the event timer.
+  Triggers a specific event ID or, if none provided, a random event. Does **not** reset the event timer.
   **Note:** GM only.
 
 * `.stockdata`
