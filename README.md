@@ -32,8 +32,7 @@ Installation
 2. Execute the following SQL files:
    - `Stockmarketcharacter.sql` → Run on the **characters database**
    - `Stockmarketevents.sql` → Run on the **world database**
-   - `StockBroker.sql` → Run on the **world database**
-   - `NPCdisplayid.sql` → Run on the **world database** (adds display ID 27822)
+   - `StockBroker.sql` → Run on the **world database** (adds display ID 27822)
 
    > NPC entry ID 90001 is used by default. If you wish to change it, update the ID in `Stockbroker.lua`.
 
