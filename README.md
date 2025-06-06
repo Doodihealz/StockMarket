@@ -19,7 +19,7 @@ Features
 - Individual investment tracking per character (not account-wide).
 - Logs older than 30 days are automatically deleted every 24 hours.
 - Manual event triggering via `.stockevent` GM command.
-- Check how much is in your account with the .stockdata command. Has a 5 minute cooldown between uses.
+- Check how much is in your account with the `.stockdata` command. Has a 5 minute cooldown between uses.
 - Comedic, lore-themed events included for extra fun.
 
 Installation
