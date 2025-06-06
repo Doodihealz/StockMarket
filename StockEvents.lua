@@ -79,6 +79,9 @@ local function GetTierDelay(tier)
 end
 
 local __NEXT_STOCK_EVENT_TIME__ = 0
+local __NEXT_MICRO_EVENT_TIME__ = 0
+local __NEXT_MINOR_EVENT_TIME__ = 0
+local __NEXT_MAJOR_EVENT_TIME__ = 0
 
 local function TriggerStockEvent()
     local event = _G.__CURRENT_STOCK_EVENT__
@@ -116,6 +119,11 @@ local function ScheduleNextStockEvent()
     local delay = GetTierDelay(tier)
     local minutes = math.floor(delay / 60000)
     __NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
+
+    local now = os.time()
+    __NEXT_MICRO_EVENT_TIME__ = now + math.floor(GetTierDelay("micro") / 1000)
+    __NEXT_MINOR_EVENT_TIME__ = now + math.floor(GetTierDelay("minor") / 1000)
+    __NEXT_MAJOR_EVENT_TIME__ = now + (math.random() <= 0.10 and math.floor(GetTierDelay("major") / 1000) or 3600)
 
     local microETA = math.floor(GetTierDelay("micro") / 60000)
     local minorETA = math.floor(GetTierDelay("minor") / 60000)
@@ -246,14 +254,15 @@ RegisterPlayerEvent(42, OnGMCommand)
 local function OnStockTimerCommand(event, player, command)
     if command:lower():gsub("[#./]", "") ~= "stocktimer" then return end
 
-    local function eta(ms)
-        return string.format("%d minutes", math.floor(ms / 60000))
+    local function remaining(sec)
+        local min = math.floor(sec / 60)
+        return min > 0 and (min .. " minutes") or "less than a minute"
     end
 
-    local microETA = eta(GetTierDelay("micro"))
-    local minorETA = eta(GetTierDelay("minor"))
-    local majorChance = math.random() <= 0.10
-    local majorETA = majorChance and eta(GetTierDelay("major")) or "Not expected within the next hour"
+    local now = os.time()
+    local microETA = remaining(__NEXT_MICRO_EVENT_TIME__ - now)
+    local minorETA = remaining(__NEXT_MINOR_EVENT_TIME__ - now)
+    local majorETA = (__NEXT_MAJOR_EVENT_TIME__ - now > 3600) and "Not expected within the next hour" or remaining(__NEXT_MAJOR_EVENT_TIME__ - now)
 
     player:SendBroadcastMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
     player:SendBroadcastMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
@@ -265,14 +274,15 @@ end
 RegisterPlayerEvent(42, OnStockTimerCommand)
 
 local function OnPlayerLogin(event, player)
-    local function eta(ms)
-        return string.format("%d minutes", math.floor(ms / 60000))
+    local function remaining(sec)
+        local min = math.floor(sec / 60)
+        return min > 0 and (min .. " minutes") or "less than a minute"
     end
 
-    local microETA = eta(GetTierDelay("micro"))
-    local minorETA = eta(GetTierDelay("minor"))
-    local majorChance = math.random() <= 0.10
-    local majorETA = majorChance and eta(GetTierDelay("major")) or "Not expected within the next hour"
+    local now = os.time()
+    local microETA = remaining(__NEXT_MICRO_EVENT_TIME__ - now)
+    local minorETA = remaining(__NEXT_MINOR_EVENT_TIME__ - now)
+    local majorETA = (__NEXT_MAJOR_EVENT_TIME__ - now > 3600) and "Not expected within the next hour" or remaining(__NEXT_MAJOR_EVENT_TIME__ - now)
 
     player:SendBroadcastMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
     player:SendBroadcastMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
