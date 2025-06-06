@@ -149,13 +149,19 @@ local function ScheduleNextStockEvent()
 end
 
 local function AnnounceNextStockEventTime()
-    local remaining = __NEXT_STOCK_EVENT_TIME__ - os.time()
-    if remaining > 0 then
-        local minutes = math.ceil(remaining / 60)
-        local msg = string.format("[StockMarket] Next market event in %d minute%s.", minutes, minutes == 1 and "" or "s")
-        SendWorldMessage(msg)
-        print(msg)
+    local now = os.time()
+    local function remaining(sec)
+        local min = math.floor(sec / 60)
+        return min > 0 and (min .. " minutes") or "less than a minute"
     end
+
+    local microETA = remaining(__NEXT_MICRO_EVENT_TIME__ - now)
+    local minorETA = remaining(__NEXT_MINOR_EVENT_TIME__ - now)
+    local majorETA = (__NEXT_MAJOR_EVENT_TIME__ - now > 3600) and "Not expected within the next hour" or remaining(__NEXT_MAJOR_EVENT_TIME__ - now)
+
+    SendWorldMessage("[StockMarket] Micro event ETA: " .. microETA .. ".")
+    SendWorldMessage("[StockMarket] Minor event ETA: " .. minorETA .. ".")
+    SendWorldMessage("[StockMarket] Major event ETA: " .. majorETA .. ".")
 end
 
 CreateLuaEvent(AnnounceNextStockEventTime, 600000, 0)
