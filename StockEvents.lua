@@ -274,6 +274,17 @@ local function OnStockDataCommand(event, player, command)
     local guid = player:GetGUIDLow()
     local now = os.time()
 
+    local key = guid .. "_" .. cmd
+
+    if not player:IsGM() then
+        local lastUsed = __STOCKDATA_COOLDOWNS__[key] or 0
+        if now - lastUsed < 300 then
+            player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
+            return false
+        end
+        __STOCKDATA_COOLDOWNS__[key] = now
+    end
+
     if cmd == "stocktimer" then
         local remaining = __NEXT_STOCK_EVENT_TIME__ - now
         if remaining > 0 then
@@ -284,15 +295,6 @@ local function OnStockDataCommand(event, player, command)
             player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No market event is currently scheduled.")
         end
         return false
-    end
-
-    if not player:IsGM() then
-        local lastUsed = __STOCKDATA_COOLDOWNS__[guid] or 0
-        if now - lastUsed < 300 then
-            player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
-            return false
-        end
-        __STOCKDATA_COOLDOWNS__[guid] = now
     end
 
     local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
