@@ -1,18 +1,20 @@
 local STOCK_BROKER_NPC_ID = 90001
 local INPUT_DEPOSIT = 50001
 local INPUT_WITHDRAW = 50002
+local INPUT_DEPOSIT_ALL = 50003
+local INPUT_WITHDRAW_ALL = 50004
 
 local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:16:16:0:0|t"
 local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:16:16:0:0|t"
 local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:16:16:0:0|t"
-
 local MAX_COPPER = 2147483647
 
-local function FormatGold(copper)
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperRest = copper % 100
-    return string.format("%d%s %d%s %d%s", gold, GOLD_ICON, silver, SILVER_ICON, copperRest, COPPER_ICON)
+local function FormatGold(c)
+    c = tonumber(c or 0)
+    local g = math.floor(c / 10000)
+    local s = math.floor((c % 10000) / 100)
+    local r = c % 100
+    return string.format("%d%s %d%s %d%s", g, GOLD_ICON, s, SILVER_ICON, r, COPPER_ICON)
 end
 
 local function GetInvested(guid)
@@ -21,92 +23,122 @@ local function GetInvested(guid)
 end
 
 local function GetActiveStockEvent()
-    return _G.__CURRENT_STOCK_EVENT__ or { id = "NULL", change = "0" }
+    return _G.__CURRENT_STOCK_EVENT__ or { id = 0, change = 0 }
 end
 
-local function LogTransaction(guid, event_id, change_copper, resulting_copper, description)
-    local goldChange = change_copper / 10000
-    local goldTotal = math.floor(resulting_copper / 10000)
-    local event = GetActiveStockEvent()
+local function LogTransaction(guid, event_id, change, resultingCopper, description)
+    local goldChange = change / 10000
+    local resultingGold = resultingCopper / 10000
+    local e = GetActiveStockEvent() or { id = 0, change = 0 }
 
-    CharDBExecute(string.format([[
-        INSERT INTO character_stockmarket_log
-        (guid, event_id, change_amount, percent_change, resulting_gold, description, created_at)
-        VALUES (%d, %s, %.2f, %s, %d, '%s', NOW())
-    ]], guid, tostring(event.id), goldChange, tostring(event.change), goldTotal, description))
+    local percentChange = 0
+    local original = resultingCopper - change
+
+    if math.abs(original) > 0 then
+        percentChange = (change / math.abs(original)) * 100
+    elseif change > 0 then
+        percentChange = 100
+    end
+
+    percentChange = math.floor(percentChange * 100 + 0.5) / 100
+    local sign = percentChange > 0 and "+" or (percentChange < 0 and "-" or "")
+    local percentString = string.format("%s%.2f%%", sign, math.abs(percentChange))
+
+    CharDBExecute(string.format(
+        "INSERT INTO character_stockmarket_log (guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) " ..
+        "VALUES (%d, %d, %d, '%s', %.2f, '%s', NOW())",
+        guid, e.id, change, percentString, resultingGold, description
+    ))
 end
 
 local function OnGossipHello(event, player, creature)
-    player:GossipClearMenu()
-
     local guid = player:GetGUIDLow()
-    local investedCopper = GetInvested(guid)
-    local investedGold = FormatGold(investedCopper)
+    local invested = GetInvested(guid)
+    local formatted = FormatGold(invested)
 
-    player:GossipMenuAddItem(0, "Total Invested: " .. investedGold, 1, 99999)
-    player:GossipMenuAddItem(0, "|cFFFFFF00[Deposit Gold]|r", 1, INPUT_DEPOSIT, true, "Insert the amount of gold you want to deposit:")
-    player:GossipMenuAddItem(0, "|cFFFFFF00[Withdraw Gold]|r", 1, INPUT_WITHDRAW, true, "Insert the amount of gold you want to withdraw:")
-
+    player:GossipClearMenu()
+    player:GossipMenuAddItem(0, "Total Invested: " .. formatted, 1, 99999)
+    player:GossipMenuAddItem(0, "|cFFFFFF00[Deposit Custom Amount]|r", 1, INPUT_DEPOSIT, true, "Insert the amount of gold to deposit:")
+    player:GossipMenuAddItem(0, "|cFFFFFF00[Withdraw Custom Amount]|r", 1, INPUT_WITHDRAW, true, "Insert the amount of gold to withdraw:")
+    player:GossipMenuAddItem(0, "|cFF00FF00[Deposit All]|r", 1, INPUT_DEPOSIT_ALL)
+    player:GossipMenuAddItem(0, "|cFFFF0000[Withdraw All]|r", 1, INPUT_WITHDRAW_ALL)
     player:GossipSendMenu(1, creature)
 end
 
 local function OnGossipSelect(event, player, creature, sender, intid, code)
     local guid = player:GetGUIDLow()
+    local amount
 
-    if not code then
-        player:SendBroadcastMessage("|cffff0000No value entered. Please try again.|r")
-        player:GossipComplete()
-        return
+    if intid == INPUT_DEPOSIT or intid == INPUT_WITHDRAW then
+        if not code then
+            player:SendBroadcastMessage("|cffff0000No value entered.|r")
+            player:GossipComplete()
+            return
+        end
+
+        local clean = string.gsub(code, "[^%d]", "")
+        local gold = tonumber(clean)
+        if not gold or gold <= 0 then
+            player:SendBroadcastMessage("|cffff0000Invalid amount.|r")
+            player:GossipComplete()
+            return
+        end
+
+        amount = gold * 10000
+        if amount > MAX_COPPER then
+            player:SendBroadcastMessage("|cffff0000Too much gold entered.|r")
+            player:GossipComplete()
+            return
+        end
     end
 
-    local cleaned = string.gsub(code, "[^%d]", "")
-    local gold = tonumber(cleaned)
-    if not gold or gold <= 0 then
-        player:SendBroadcastMessage("|cffff0000Invalid amount entered.|r")
-        player:GossipComplete()
-        return
-    end
-
-    local copper = gold * 10000
-    if copper > MAX_COPPER then
-        player:SendBroadcastMessage("|cffff0000Amount too large. Max allowed is 214,748 gold.|r")
-        player:GossipComplete()
-        return
-    end
-
-    if intid == INPUT_DEPOSIT then
-        local playerCopper = player:GetCoinage()
-        if playerCopper >= copper then
-            local current = GetInvested(guid)
-            local total = current + copper
-
-            CharDBExecute(string.format([[
-                INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated)
-                VALUES (%d, %d, NOW())
-                ON DUPLICATE KEY UPDATE InvestedMoney = VALUES(InvestedMoney), last_updated = NOW()
-            ]], guid, total))
-
-            LogTransaction(guid, 1, copper, total, "Player deposited gold.")
+    if intid == INPUT_DEPOSIT or intid == INPUT_DEPOSIT_ALL then
+        local copper = (intid == INPUT_DEPOSIT_ALL) and player:GetCoinage() or amount
+        if copper > 0 and player:GetCoinage() >= copper then
+            local old = GetInvested(guid)
             player:ModifyMoney(-copper)
-            player:SendBroadcastMessage(string.format("|cff00ff00Deposited %d%s.|r", gold, GOLD_ICON))
+
+            CharDBExecute(string.format(
+                "INSERT INTO character_stockmarket (guid, InvestedMoney, last_updated) " ..
+                "VALUES (%d, %d, NOW()) ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + %d, last_updated = NOW()",
+                guid, copper, copper
+            ))
+
+            local total = old + copper
+            LogTransaction(guid, 1, copper, total, "Player deposited gold.")
+
+            local percent = (old > 0) and (copper / old) * 100 or 100
+            percent = math.floor(percent * 100 + 0.5) / 100
+            local sign = (percent > 0) and "+" or ""
+            local color = (percent > 0) and "|cff00ff00" or "|cffffff00"
+
+            player:SendBroadcastMessage(string.format("|cff00ff00Deposited %s.|r", FormatGold(copper)))
+            player:SendBroadcastMessage(string.format("|cffffff00Investment change:|r %s%s%.2f%%%s", color, sign, percent, "|r"))
         else
             player:SendBroadcastMessage("|cffff0000Not enough gold.|r")
         end
 
-    elseif intid == INPUT_WITHDRAW then
-        local current = GetInvested(guid)
-        if current >= copper then
-            local total = current - copper
+    elseif intid == INPUT_WITHDRAW or intid == INPUT_WITHDRAW_ALL then
+        local invested = GetInvested(guid)
+        local withdrawAmount = (intid == INPUT_WITHDRAW_ALL) and invested or amount
 
-            CharDBExecute(string.format([[
-                UPDATE character_stockmarket
-                SET InvestedMoney = %d, last_updated = NOW()
-                WHERE guid = %d
-            ]], total, guid))
+        if invested >= withdrawAmount and withdrawAmount > 0 then
+            CharDBExecute(string.format(
+                "UPDATE character_stockmarket SET InvestedMoney = InvestedMoney - %d, last_updated = NOW() WHERE guid = %d",
+                withdrawAmount, guid
+            ))
 
-            LogTransaction(guid, 2, -copper, total, "Player withdrew gold.")
-            player:ModifyMoney(copper)
-            player:SendBroadcastMessage(string.format("|cff00ff00Withdrew %d%s.|r", gold, GOLD_ICON))
+            local total = invested - withdrawAmount
+            LogTransaction(guid, 2, -withdrawAmount, total, "Player withdrew gold.")
+            player:ModifyMoney(withdrawAmount)
+
+            local percent = (invested > 0) and (-withdrawAmount / invested) * 100 or 0
+            percent = math.floor(percent * 100 + 0.5) / 100
+            local sign = (percent > 0) and "+" or ""
+            local color = (percent < 0) and "|cffff0000" or "|cffffff00"
+
+            player:SendBroadcastMessage(string.format("|cff00ff00Withdrew %s.|r", FormatGold(withdrawAmount)))
+            player:SendBroadcastMessage(string.format("|cffffff00Investment change:|r %s%s%.2f%%%s", color, sign, percent, "|r"))
         else
             player:SendBroadcastMessage("|cffff0000Not enough invested funds.|r")
         end
