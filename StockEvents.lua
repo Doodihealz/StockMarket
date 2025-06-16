@@ -171,19 +171,29 @@ RegisterPlayerEvent(42, function(_, player, command)
     cmd = cmd and cmd:lower() or ""
     arg = tonumber(arg)
 
-    if not player or cmd == "" then return false end
+    if not player or cmd == "" then return true end
+
+    local validCommands = {
+        deposit = true, withdraw = true, stockdata = true,
+        stockhelp = true, stocktimer = true, stockevent = true
+    }
+    if not validCommands[cmd] then return true end
+
     local now, guid = os.time(), player:GetGUIDLow()
     local key = guid .. "_" .. cmd
     if now - (__STOCKDATA_COOLDOWNS__[key] or 0) < 300 then
         player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
-        return false
+        return true
     end
     __STOCKDATA_COOLDOWNS__[key] = now
 
-    if cmd == "deposit" and arg      then Deposit(player, arg)
-    elseif cmd == "withdraw" and arg then Withdraw(player, arg)
-    elseif cmd == "stockdata"       then QueryInvestment(player)
-    elseif cmd == "stockhelp"       then
+    if cmd == "deposit" and arg then
+        Deposit(player, arg)
+    elseif cmd == "withdraw" and arg then
+        Withdraw(player, arg)
+    elseif cmd == "stockdata" then
+        QueryInvestment(player)
+    elseif cmd == "stockhelp" then
         player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Available commands:")
         player:SendBroadcastMessage("|cffffff00.deposit <copper>|r  Deposit money")
         player:SendBroadcastMessage("|cffffff00.withdraw <copper>|r Withdraw money")
@@ -193,18 +203,18 @@ RegisterPlayerEvent(42, function(_, player, command)
     elseif cmd == "stocktimer" then
         local remaining = (__NEXT_STOCK_EVENT_TIME__ or now) - now
         if remaining > 0 then
-            player:SendBroadcastMessage(("[StockMarket] Next market event in %d minute%s."):format(math.ceil(remaining/60), math.ceil(remaining/60)==1 and "" or "s"))
+            player:SendBroadcastMessage(("[StockMarket] Next market event in %d minute%s."):format(math.ceil(remaining / 60), math.ceil(remaining / 60) == 1 and "" or "s"))
         else
             player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No market event scheduled.")
         end
     elseif cmd == "stockevent" then
         if not player:IsGM() or not player:IsGMVisible() then
             player:SendBroadcastMessage("|cffff0000[StockMarket]|r GM mode required.")
-            return false
+            return true
         end
         TriggerHourlyEvent(true)
         player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Stock market event triggered.")
     end
 
-    return false
+    return true
 end)
