@@ -1,70 +1,91 @@
-# StockMarket System
+# 🪙 StockMarket System
 
-This script introduces a dynamic, in-game stock market system to World of Warcraft (AzerothCore-based servers). Players can invest gold via a designated NPC ("Stock Broker", entry ID 90001) and watch their investments grow or shrink over time based on random market events.
+This script introduces a dynamic, in-game stock market system to World of Warcraft (AzerothCore-based servers). Players can invest gold via a designated NPC (`Stock Broker`, entry ID `90001`) and watch their investments grow or shrink over time based on random market events.
 
-## Requirements
+## 📦 Requirements
 
-* **AzerothCore / TrinityCore with Eluna Engine enabled**
-  This script requires the Eluna Lua engine to function. Ensure Eluna is properly installed and configured on your server.
+- **AzerothCore or TrinityCore** with the **Eluna Engine** enabled.
+- A database supporting `character_stockmarket` and `character_stockmarket_log` (see installation SQL).
 
-## Features
+## ✨ Features
 
-* NPC Stock Broker (entry 90001) handles deposits and withdrawals without penalties.
-* Automated market events occur every 10–60 minutes:
-* Events are either positive or negative, with a mild bias toward positive changes.
-* All changes are recorded in `character_stockmarket_log` in the `acore_characters` database.
-* Individual investment tracking per character (not account-wide).
-* Logs older than 30 days are automatically deleted every 24 hours.
-* Manual event triggering via `.stockevent` GM command.
-* Check how much is in your account with the `.stockdata` command. Has a 5 minute cooldown between uses.
-* Comedic, lore-themed events included for extra fun.
-* Players see ETA announcements on login.
-* Server automatically announces ETA for the stockevent.
+- 🧑‍💼 **Stock Broker NPC (Entry ID: 90001)**
+  - Accepts deposits and withdrawals (minimum 1g deposit, no penalty on withdrawal).
+  - Handles interactions via gossip menu.
+  - Tracks each character's investments individually.
 
-## Installation
+- 🧮 **Stock Investment Logic**
+  - Each player can invest gold.
+  - Funds are stored in `character_stockmarket`.
+  - Gains/losses are recorded in `character_stockmarket_log`.
 
-1. Place the following Lua scripts in your server's Lua scripts folder:
+- ⏱ **Automated Market Events**
+  - Randomized market events occur every **15 to 30 minutes**.
+  - Events can be positive or negative, with a mild bias toward positive.
+  - Events affect **all players’ investments proportionally**.
+  - Event history logged with percentage change and message.
 
-   * `StockEvents.lua`
-   * `Stockbroker.lua`
+- 💬 **Global Announcements**
+  - Time until next event is announced globally every 10 minutes.
+  - Players see ETA on login.
+  - Events broadcast server-wide with color-coded summaries.
 
-2. Execute the following SQL files:
+- 🧹 **Log Cleanup**
+  - Logs older than 30 days are automatically cleaned once every 24 hours.
 
-   * `Stockmarketcharacter.sql` → Run on the **characters database**
+- 🧪 **Manual GM Controls**
+  - `.stockevent`: GM-only command to manually trigger a market event.
 
-   * `Stockmarketevents.sql` → Run on the **world database**
+- 🧾 **Player Commands**
+  - `.stockdata`: Shows player’s investment balance (5-minute cooldown).
+  - `.stockhelp`: Lists all available stock commands.
+  - `.stocktimer`: Shows time until the next scheduled event.
 
-   * `StockBroker.sql` → Run on the **world database** (adds display ID 27822)
+## 🛠 Installation
 
-   > NPC entry ID 90001 is used by default. If you wish to change it, update the ID in `Stockbroker.lua`.
+1. Copy the Lua scripts into your server's Lua scripts directory:
 
-3. Restart the server. The Stock Broker NPC will now handle investments, and stock events will begin firing automatically.
+   - `StockEvents.lua`
+   - `Stockbroker.lua`
 
-## Event Control
+2. Execute the provided SQL files:
 
-* `.stockevent`
-  Triggers a specific event ID or, if none provided, a random event. Does **not** reset the event timer.
-  **Note:** GM only.
+   - `Stockmarketcharacter.sql` — on the **characters** database.
+   - `Stockmarketevents.sql` — on the **world** database.
+   - `StockBroker.sql` — on the **world** database.
 
-* `.stockdata`
-  Returns the player's current investment total. Usable once every 5 minutes.
+   > NPC uses Entry ID `90001` and Display ID `27822`. If you use a different entry, update it in the Lua file.
 
-## Technical Notes
+3. Restart the server. The stock market will begin operating automatically.
 
-* All currency is stored securely in the `character_stockmarket` table (`acore_characters`) or your core equivalent.
-* Logs include value deltas, percentages, and event descriptions.
-* Multiple characters per account can maintain separate investments.
-* ETA announcements are sent on player login and each event schedule.
-* Clean server logs strip in-game color codes from stock messages.
+## 📜 Commands
 
-## Caution
+| Command           | Access     | Description                                      |
+|-------------------|------------|--------------------------------------------------|
+| `.stockdata`      | Player     | View your current invested gold (5m cooldown).   |
+| `.stocktimer`     | Player     | See when the next stock market event is.         |
+| `.stockhelp`      | Player     | Show all available stock-related commands.       |
+| `.stockevent`     | GM Only    | Trigger a random market event manually.          |
 
-This script is provided **AS IS**. Support will only be given for unmodified versions. If you alter the code and encounter issues, you're on your own.
+## 🧠 Technical Notes
 
-## Credits
+- All currency is stored in copper (1g = 10,000).
+- Player funds are tracked per **character**, not account.
+- Color codes used in chat are stripped from server logs for cleanliness.
+- Market events use weighted randomness with configurable rarity and type bias.
+- All transactions are logged with before/after values, deltas, and descriptions.
 
-Developed by:
-Doodihealz / Corey
+## ⚠️ Caution
 
-Have fun making (or losing) gold!
+This script is provided **AS IS**. Limited support is available for unmodified versions only. If you make changes and encounter issues, you're expected to debug them independently.
 
+## 🙏 Credits
+
+Developed by:  
+**Doodihealz / Corey**
+
+Thanks to the WoW modding community for your help and support.
+
+---
+
+Enjoy gaining (or losing) money!
