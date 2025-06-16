@@ -167,54 +167,67 @@ CreateLuaEvent(AnnounceNextStockEventTime, 600000, 0)
 ScheduleNextStockEvent()
 
 RegisterPlayerEvent(42, function(_, player, command)
+    if not player or not command then return false end
+
     local cmd, arg = command:match("^(%S+)%s*(.*)$")
-    cmd = cmd and cmd:lower() or ""
+    cmd = cmd and cmd:lower():gsub("[#./]", "") or ""
     arg = tonumber(arg)
 
-    if not player or cmd == "" then return true end
-
     local validCommands = {
-        deposit = true, withdraw = true, stockdata = true,
-        stockhelp = true, stocktimer = true, stockevent = true
+        stockdata = true,
+        stockhelp = true,
+        stocktimer = true,
+        stockevent = true
     }
-    if not validCommands[cmd] then return true end
 
-    local now, guid = os.time(), player:GetGUIDLow()
+    if not validCommands[cmd] then return false end
+
+    local now = os.time()
+    local guid = player:GetGUIDLow()
     local key = guid .. "_" .. cmd
+
+    __STOCKDATA_COOLDOWNS__ = __STOCKDATA_COOLDOWNS__ or {}
     if now - (__STOCKDATA_COOLDOWNS__[key] or 0) < 300 then
         player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
-        return true
+        return false
     end
     __STOCKDATA_COOLDOWNS__[key] = now
 
-    if cmd == "deposit" and arg then
-        Deposit(player, arg)
-    elseif cmd == "withdraw" and arg then
-        Withdraw(player, arg)
-    elseif cmd == "stockdata" then
-        QueryInvestment(player)
+    if cmd == "stockdata" then
+        local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid = " .. guid)
+        local invested = q and q:GetUInt32(0) or 0
+        local gold = math.floor(invested / 10000)
+        local silver = math.floor((invested % 10000) / 100)
+        local copper = invested % 100
+
+        player:SendBroadcastMessage(("|cff00ff00[StockMarket]|r Your investment: %d|TInterface\\MoneyFrame\\UI-GoldIcon:0|t %d|TInterface\\MoneyFrame\\UI-SilverIcon:0|t %d|TInterface\\MoneyFrame\\UI-CopperIcon:0|t")
+            :format(gold, silver, copper))
+
     elseif cmd == "stockhelp" then
         player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Available commands:")
-        player:SendBroadcastMessage("|cffffff00.deposit <copper>|r  Deposit money")
-        player:SendBroadcastMessage("|cffffff00.withdraw <copper>|r Withdraw money")
         player:SendBroadcastMessage("|cffffff00.stockdata|r       View investment")
         player:SendBroadcastMessage("|cffffff00.stocktimer|r      Time to next event")
         player:SendBroadcastMessage("|cffffff00.stockevent|r      Trigger event (GM)")
+
     elseif cmd == "stocktimer" then
         local remaining = (__NEXT_STOCK_EVENT_TIME__ or now) - now
         if remaining > 0 then
-            player:SendBroadcastMessage(("[StockMarket] Next market event in %d minute%s."):format(math.ceil(remaining / 60), math.ceil(remaining / 60) == 1 and "" or "s"))
+            player:SendBroadcastMessage(("[StockMarket] Next market event in %d minute%s."):format(
+                math.ceil(remaining / 60),
+                math.ceil(remaining / 60) == 1 and "" or "s"
+            ))
         else
             player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No market event scheduled.")
         end
+
     elseif cmd == "stockevent" then
         if not player:IsGM() or not player:IsGMVisible() then
             player:SendBroadcastMessage("|cffff0000[StockMarket]|r GM mode required.")
-            return true
+            return false
         end
         TriggerHourlyEvent(true)
         player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Stock market event triggered.")
     end
 
-    return true
+    return false
 end)
