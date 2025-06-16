@@ -167,7 +167,7 @@ CreateLuaEvent(AnnounceNextStockEventTime, 600000, 0)
 ScheduleNextStockEvent()
 
 RegisterPlayerEvent(42, function(_, player, command)
-    if not player or not command then return false end
+    if not player or not command then return end
 
     local cmd, arg = command:match("^(%S+)%s*(.*)$")
     cmd = cmd and cmd:lower():gsub("[#./]", "") or ""
@@ -180,7 +180,9 @@ RegisterPlayerEvent(42, function(_, player, command)
         stockevent = true
     }
 
-    if not validCommands[cmd] then return false end
+    if not validCommands[cmd] then
+        return
+    end
 
     local now = os.time()
     local guid = player:GetGUIDLow()
