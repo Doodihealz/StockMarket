@@ -48,16 +48,14 @@ local function RegisterHandlers()
         local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE guid=" .. g)
         local investedNew = (q and not q:IsNull(0)) and q:GetUInt32(0) or 0
 
-        local e = GetActiveStockEvent()
         local changeAmt = c
-        local percent = investedOld > 0 and (changeAmt / investedOld) * 100 or 100
-        percent = math.floor(percent * 100 + 0.5) / 100
-        local sign = percent > 0 and "+" or ""
-        local pctStr = string.format("%s%.2f%%", sign, percent)
+        local pctDelta = investedOld > 0 and (changeAmt / investedOld) * 100 or 100
+        pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
+        local pctStr = string.format("%+.2f%%", pctDelta)
 
         CharDBExecute(string.format(
             "INSERT INTO character_stockmarket_log (guid,event_id,change_amount,percent_change,resulting_gold,description,created_at) VALUES(%d,%d,%d,'%s',%.2f,'Deposit: %s',NOW())",
-            g, __NEXT_LOG_EVENT_ID__, changeAmt, pctStr, investedNew / 10000, e.text
+            g, __NEXT_LOG_EVENT_ID__, changeAmt, pctStr, investedNew / 10000, GetActiveStockEvent().text
         ))
         __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 
@@ -83,16 +81,14 @@ local function RegisterHandlers()
             investedNew, g
         ))
 
-        local e = GetActiveStockEvent()
         local changeAmt = -c
-        local percent = investedOld > 0 and (changeAmt / investedOld) * 100 or 0
-        percent = math.floor(percent * 100 + 0.5) / 100
-        local sign = percent > 0 and "+" or ""
-        local pctStr = string.format("%s%.2f%%", sign, percent)
+        local pctDelta = investedOld > 0 and (changeAmt / investedOld) * 100 or 0
+        pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
+        local pctStr = string.format("%+.2f%%", pctDelta)
 
         CharDBExecute(string.format(
             "INSERT INTO character_stockmarket_log (guid,event_id,change_amount,percent_change,resulting_gold,description,created_at) VALUES(%d,%d,%d,'%s',%.2f,'Withdraw',NOW())",
-            g, e.id, changeAmt, pctStr, investedNew / 10000
+            g, GetActiveStockEvent().id, changeAmt, pctStr, investedNew / 10000
         ))
         __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 
@@ -134,11 +130,13 @@ end
 local function TriggerHourlyEvent()
     local e = GetRandomStockEvent()
     if not e then return end
-    local sign = e.positive and "+" or "-"
-    local pct = math.abs(e.change)
-    SendWorldMessage(string.format("[StockMarket] %s: %s%s%.2f%%", e.text, sign, pct, "%"))
-    local m = 1 + (e.change / 100)
 
+    do
+        local color = e.positive and "|cff00ff00" or "|cffff0000"
+        SendWorldMessage(string.format("[StockMarket] %s: %s%+.2f%%%s", e.text, color, e.change, "|r"))
+    end
+
+    local m = 1 + (e.change / 100)
     local q = CharDBQuery("SELECT guid, InvestedMoney FROM character_stockmarket WHERE InvestedMoney > 0")
     if q then
         repeat
@@ -148,8 +146,7 @@ local function TriggerHourlyEvent()
 
             local pctDelta = investedOld > 0 and (delta / investedOld) * 100 or 0
             pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
-            local sign2 = pctDelta >= 0 and "+" or ""
-            local pctStr = string.format("%s%.2f%%", sign2, pctDelta)
+            local pctStr = string.format("%+.2f%%", pctDelta)
 
             CharDBExecute(string.format(
                 "UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE guid = %d",
@@ -161,6 +158,7 @@ local function TriggerHourlyEvent()
             ))
         until not q:NextRow()
     end
+
     _G.__CURRENT_STOCK_EVENT__ = e
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 end
@@ -168,8 +166,10 @@ end
 local function ScheduleNextStockEvent()
     local delay = math.random(900000, 1800000)
     __NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
-    local minutes = math.floor(delay / 60000)
-    SendWorldMessage(string.format("[StockMarket] Next stock market event in %d minute%s.", minutes, minutes == 1 and "" or "s"))
+    SendWorldMessage(string.format(
+        "[StockMarket] Next stock market event in %d minute%s.",
+        math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"
+    ))
     CreateLuaEvent(function()
         TriggerHourlyEvent()
         ScheduleNextStockEvent()
@@ -179,8 +179,10 @@ end
 local function AnnounceNextStockEventTime()
     local t = __NEXT_STOCK_EVENT_TIME__ - os.time()
     if t > 0 then
-        local minutes = math.ceil(t / 60)
-        SendWorldMessage(string.format("[StockMarket] Next market event in %d minute%s.", minutes, minutes == 1 and "" or "s"))
+        SendWorldMessage(string.format(
+            "[StockMarket] Next market event in %d minute%s.",
+            math.ceil(t / 60), math.ceil(t / 60) == 1 and "" or "s"
+        ))
     end
 end
 
@@ -218,9 +220,7 @@ RegisterPlayerEvent(42, function(_, player, command)
             return false
         end
         local copper = q:GetUInt32(0)
-        local gold = math.floor(copper / 10000)
-        local silver = math.floor((copper % 10000) / 100)
-        local remainCopper = copper % 100
+        local gold, silver, remainCopper = math.floor(copper / 10000), math.floor((copper % 10000) / 100), copper % 100
         player:SendBroadcastMessage(string.format(
             "|cff00ff00[StockMarket]|r Your investment: %d|TInterface\\MoneyFrame\\UI-GoldIcon:0|t %d|TInterface\\MoneyFrame\\UI-SilverIcon:0|t %d|TInterface\\MoneyFrame\\UI-CopperIcon:0|t",
             gold, silver, remainCopper
@@ -230,11 +230,9 @@ RegisterPlayerEvent(42, function(_, player, command)
 
     if cmd == "stocktimer" then
         local remaining = (__NEXT_STOCK_EVENT_TIME__ or now) - now
-        local minutes = math.ceil(remaining / 60)
-        local msg = remaining > 0 and
-            string.format("|cff00ff00[StockMarket]|r Next market event in %d minute%s.", minutes, minutes == 1 and "" or "s") or
-            "|cffffcc00[StockMarket]|r No market event is currently scheduled."
-        player:SendBroadcastMessage(msg)
+        player:SendBroadcastMessage(remaining > 0 and
+            string.format("|cff00ff00[StockMarket]|r Next market event in %d minute%s.", math.ceil(remaining / 60), math.ceil(remaining / 60) == 1 and "" or "s")
+            or "|cffffcc00[StockMarket]|r No market event is currently scheduled.")
         return false
     end
 
@@ -250,10 +248,8 @@ RegisterPlayerEvent(42, function(_, player, command)
             return false
         end
 
-        local sign = e.positive and "+" or "-"
-        local pct = math.abs(e.change)
         local color = e.positive and "|cff00ff00" or "|cffff0000"
-        SendWorldMessage(string.format("[StockMarket] %s: %s%s%.2f%%%s", e.text, color, sign, pct, "|r"))
+        SendWorldMessage(string.format("[StockMarket] %s: %s%+.2f%%%s", e.text, color, e.change, "|r"))
 
         local multiplier = 1 + (e.change / 100)
         local q = CharDBQuery("SELECT guid, InvestedMoney FROM character_stockmarket WHERE InvestedMoney > 0")
@@ -265,8 +261,7 @@ RegisterPlayerEvent(42, function(_, player, command)
 
                 local pctDelta = investedOld > 0 and (delta / investedOld) * 100 or 0
                 pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
-                local sign2 = pctDelta >= 0 and "+" or ""
-                local pctStr = string.format("%s%.2f%%", sign2, math.abs(pctDelta))
+                local pctStr = string.format("%+.2f%%", pctDelta)
 
                 CharDBExecute(string.format(
                     "UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE guid = %d",
