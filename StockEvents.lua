@@ -1,6 +1,8 @@
 if _G.__STOCKMARKET_CLEAN__ then return end
 _G.__STOCKMARKET_CLEAN__ = true
 
+math.randomseed(os.time())
+
 local GOLD_CAP_COPPER = 2147483647
 
 local __NEXT_LOG_EVENT_ID__ = (function()
@@ -162,6 +164,8 @@ local function TriggerHourlyEvent(isManual)
     local e = GetRandomStockEvent()
     if not e then return end
 
+    print(("[StockMarket] Triggering event: %s (%+.2f%%)"):format(e.text, e.change))
+
     local color = e.positive and "|cff00ff00" or "|cffff0000"
     SendWorldMessage(("[StockMarket] %s: %s%+.2f%%%s"):format(e.text, color, e.change, "|r"))
 
@@ -187,14 +191,12 @@ local function TriggerHourlyEvent(isManual)
 
     _G.__CURRENT_STOCK_EVENT__ = e
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
-
-    if isManual and PLAYER then
-    end
 end
 
 local function ScheduleNextStockEvent()
     local delay = math.random(900000, 1800000)
     _G.__NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
+    print(string.format("[StockMarket] Scheduling next event in %d minute%s", math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"))
     SendWorldMessage(("[StockMarket] Next stock market event in %d minute%s."):format(math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"))
     CreateLuaEvent(function()
         TriggerHourlyEvent(false)
@@ -234,8 +236,8 @@ RegisterPlayerEvent(42, function(_, player, command)
     local acc = player:GetAccountId()
     local key = acc .. "_" .. cmd
 
-    __STOCKDATA_COOLDOWNS__ = __STOCKDATA_COOLDOWNS__ or {}
-    if now - (__STOCKDATA_COOLDOWNS__[key] or 0) < 300 then
+    __STOCKDATA_COOLDOWNS__[key] = __STOCKDATA_COOLDOWNS__[key] or 0
+    if now - __STOCKDATA_COOLDOWNS__[key] < 300 then
         player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
         return false
     end
@@ -243,13 +245,11 @@ RegisterPlayerEvent(42, function(_, player, command)
 
     if cmd == "stockdata" then
         QueryInvestment(player)
-
     elseif cmd == "stockhelp" then
         player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Available commands:")
         player:SendBroadcastMessage("|cffffff00.stockdata|r       View investment")
         player:SendBroadcastMessage("|cffffff00.stocktimer|r      Time to next event")
         player:SendBroadcastMessage("|cffffff00.stockevent|r      Trigger event (GM)")
-
     elseif cmd == "stocktimer" then
         local remaining = (__NEXT_STOCK_EVENT_TIME__ or now) - now
         if remaining > 0 then
@@ -260,7 +260,6 @@ RegisterPlayerEvent(42, function(_, player, command)
         else
             player:SendBroadcastMessage("|cffffcc00[StockMarket]|r No market event scheduled.")
         end
-
     elseif cmd == "stockevent" then
         if not player:IsGM() or not player:IsGMVisible() then
             player:SendBroadcastMessage("|cffff0000[StockMarket]|r GM mode required.")
@@ -282,3 +281,5 @@ RegisterPlayerEvent(3, function(_, player)
         ))
     end
 end)
+
+print("[StockMarket] Stock market system loaded.")
