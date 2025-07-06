@@ -59,8 +59,18 @@ local function Deposit(p, c)
 
     p:ModifyMoney(-c)
     CharDBExecute(("INSERT INTO character_stockmarket (account,InvestedMoney,last_updated) VALUES(%d,%d,NOW()) ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + VALUES(InvestedMoney), last_updated = NOW()"):format(acc, c))
-    local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE account = " .. acc)
-    local investedNew = q and not q:IsNull(0) and q:GetUInt32(0) or 0
+
+    local investedNew = 0
+    do
+        local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE account = " .. acc)
+        if q and not q:IsNull(0) then
+            investedNew = tonumber(q:GetUInt32(0)) or 0
+        end
+    end
+
+    if type(investedNew) ~= "number" or investedNew ~= investedNew or investedNew == math.huge then
+        investedNew = 0
+    end
 
     local pctDelta = investedOld > 0 and (c / investedOld) * 100 or 100
     pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
@@ -136,7 +146,8 @@ local function GetRandomStockEvent()
     repeat
         local id = q:GetUInt32(0)
         local text = q:GetString(1)
-        local change = q:GetFloat(2)
+        local change = tonumber(q:GetFloat(2)) or 0
+        if change ~= change or math.abs(change) > 1e4 then change = 0 end
         local positive = q:GetUInt8(3) == 1
         local rarity = q:GetUInt8(4)
         local weight = 1 / (rarity + 1) + (positive and 0.05 or 0)
@@ -198,6 +209,7 @@ local function ScheduleNextStockEvent()
     _G.__NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
     print(string.format("[StockMarket] Scheduling next event in %d minute%s", math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"))
     SendWorldMessage(("[StockMarket] Next stock market event in %d minute%s."):format(math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"))
+
     CreateLuaEvent(function()
         TriggerHourlyEvent(false)
         ScheduleNextStockEvent()
@@ -281,5 +293,3 @@ RegisterPlayerEvent(3, function(_, player)
         ))
     end
 end)
-
-print("[StockMarket] Stock market system loaded.")
