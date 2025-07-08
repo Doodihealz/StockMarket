@@ -208,7 +208,6 @@ local function ScheduleNextStockEvent()
     local delay = math.random(900000, 1800000)
     _G.__NEXT_STOCK_EVENT_TIME__ = os.time() + math.floor(delay / 1000)
     print(string.format("[StockMarket] Scheduling next event in %d minute%s", math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"))
-    SendWorldMessage(("[StockMarket] Next stock market event in %d minute%s."):format(math.floor(delay / 60000), math.floor(delay / 60000) == 1 and "" or "s"))
 
     CreateLuaEvent(function()
         TriggerHourlyEvent(false)
