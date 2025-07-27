@@ -1,0 +1,181 @@
+-- --------------------------------------------------------
+-- Host:                         127.0.0.1
+-- Server version:               8.4.4 - MySQL Community Server - GPL
+-- Server OS:                    Win64
+-- HeidiSQL Version:             12.11.0.7065
+-- --------------------------------------------------------
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET NAMES utf8 */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+
+-- Dumping database structure for acore_world
+CREATE DATABASE IF NOT EXISTS `acore_world` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `acore_world`;
+
+-- Dumping structure for table acore_world.stockmarket_events
+CREATE TABLE IF NOT EXISTS `stockmarket_events` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `event_text` varchar(255) NOT NULL,
+  `percent_change` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `is_positive` tinyint(1) NOT NULL DEFAULT '1',
+  `rarity` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=147 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Dumping data for table acore_world.stockmarket_events: ~142 rows (approximately)
+INSERT INTO `stockmarket_events` (`id`, `event_text`, `percent_change`, `is_positive`, `rarity`) VALUES
+	(1, 'Massive Copper Ore cluster found near Orgrimmar!', 1.61, 1, 1),
+	(2, 'Alliance raided a small Horde outpost.', -0.08, 0, 1),
+	(3, 'Goblin engineers revealed a revolutionary new device!', 0.13, 1, 2),
+	(4, 'Darnassus trade embargo causes panic!', -0.25, 0, 2),
+	(5, 'Dwarves uncover ancient treasure vault.', 0.14, 1, 1),
+	(6, 'Plague outbreak in Western Plaguelands.', -0.08, 0, 1),
+	(7, 'Gnomish inventions spark economic boom!', 0.22, 1, 2),
+	(8, 'Stormwind stockpiles grain after poor harvest.', -0.35, 0, 1),
+	(9, 'Draenei traders introduce rare gems to the market.', 0.16, 1, 1),
+	(10, 'Fel energy surge disrupts local commerce.', -0.15, 0, 2),
+	(11, 'Darkmoon Faire boosts regional spending.', 2.12, 1, 1),
+	(12, 'Bandit raids disrupt caravan routes.', -0.35, 0, 1),
+	(13, 'Night Elf moonwell enhances crop yield.', 0.26, 1, 1),
+	(14, 'Goblin Explosives accident decimates production of supplies to warfront.', -4.04, 0, 2),
+	(15, 'Pandaren festival increases trade.', 2.19, 1, 1),
+	(16, 'Troll voodoo curse scares investors.', -3.55, 0, 1),
+	(17, 'Trade Prince Gallywix invests in local businesses.', 7.00, 1, 2),
+	(18, 'Winter Veil shopping frenzy.', 3.98, 1, 1),
+	(19, 'Harvest festival disaster ruins crops.', -1.66, 0, 1),
+	(20, 'Scarlet Crusade taxes merchants heavily.', -0.30, 0, 1),
+	(21, 'Dalaran magi conjure rare commodities.', 1.10, 1, 2),
+	(22, 'Fishing competition floods market with fish.', 0.16, 1, 1),
+	(23, 'Burning Legion rumors spook traders.', -3.00, 0, 2),
+	(24, 'Horde and Alliance sign temporary peace treaty.', 7.00, 1, 2),
+	(25, 'War breaks out in Stranglethorn Vale.', -4.18, 0, 2),
+	(26, 'Epidemic contained thanks to priests.', 0.10, 1, 1),
+	(27, 'Wild Gryphon migration disrupts deliveries.', -0.08, 0, 1),
+	(28, 'Silvermoon hosts grand auction.', 0.75, 1, 1),
+	(29, 'Shipwrecks yield valuable artifacts.', 0.44, 1, 1),
+	(30, 'Defias Brotherhood robbery in Westfall!', -0.65, 0, 2),
+	(31, 'Ancient titan relic found in Uldaman.', 1.77, 1, 2),
+	(32, 'Severe blizzard freezes trade routes.', -0.95, 0, 2),
+	(33, 'Tauren totem ceremony blesses harvest.', 0.60, 1, 1),
+	(34, 'Goblin price-fixing scandal.', -0.90, 0, 2),
+	(35, 'Elven diplomats secure lucrative trade deal.', 2.81, 1, 2),
+	(36, 'Auction House hires smarter Auctioneers', 0.13, 1, 1),
+	(37, 'Corrupted grain poisons cattle.', -0.80, 0, 1),
+	(38, 'Demonic incursion damages crops.', -3.12, 0, 2),
+	(39, 'Dwarven brewers win international award.', 1.90, 1, 1),
+	(40, 'Shaman rain dance ends drought.', 0.98, 1, 1),
+	(41, 'Elemental invasion devastates farmland.', -2.66, 0, 2),
+	(45, 'Goblin trade caravan discovers new ore vein.', 1.75, 1, 2),
+	(46, 'Local mages enchant crops to grow faster.', 2.25, 1, 2),
+	(47, 'Dwarven brewers release premium ale, market booms.', 2.90, 1, 3),
+	(48, 'Worgen entrepreneurs invent magical loom.', 1.65, 1, 2),
+	(49, 'Gnomish inventors perfect a new mana battery.', 2.15, 1, 2),
+	(50, 'Stormwind traders reduce tariffs.', 0.75, 1, 1),
+	(51, 'Silvermoon luxury goods surge in popularity.', 1.90, 1, 2),
+	(52, 'Darkmoon Faire influx boosts local economies.', 2.60, 1, 3),
+	(53, 'Orgrimmar grants tax relief to artisans.', 1.10, 1, 1),
+	(54, 'Pandaren tea exports soar.', 2.80, 1, 3),
+	(55, 'Darnassus archers win tournament, morale rises.', 0.95, 1, 1),
+	(56, 'Undead alchemists discover longer shelf-life elixirs.', 1.85, 1, 2),
+	(57, 'Thunder Bluff trading guild signs new pacts.', 1.20, 1, 1),
+	(58, 'Global demand for Azerothian gems spikes.', 2.50, 1, 3),
+	(59, 'Magical weather clears shipping routes.', 1.05, 1, 1),
+	(60, 'Kul Tiras fishing season bountiful.', 2.40, 1, 3),
+	(61, 'Druidic blessing strengthens harvest yields.', 2.10, 1, 2),
+	(62, 'Ethereals introduce new trade routes.', 1.55, 1, 2),
+	(63, 'Freebooters invest in local economies.', 2.00, 1, 2),
+	(64, 'Naga retreat from coastal trade zones.', 1.30, 1, 1),
+	(65, 'Blacksmithing boom due to rare ore find.', 2.75, 1, 3),
+	(66, 'Tauren agriculture gets arcane support.', 1.50, 1, 2),
+	(67, 'Magisters hold auction of rare relics.', 1.45, 1, 1),
+	(68, 'Steamwheedle cartel reduces loan interest.', 1.13, 1, 1),
+	(69, 'Draenei traders discover interdimensional shortcuts.', 2.95, 1, 3),
+	(70, 'Portal efficiency increases shipping speeds.', 1.40, 1, 1),
+	(71, 'Zandalari festival draws tourism income.', 2.60, 1, 3),
+	(72, 'Alliance signs trade pact with neutral faction.', 2.10, 1, 2),
+	(73, 'Arcane researchers unveil teleportation logistics.', 1.90, 1, 2),
+	(74, 'Gnome startup revolutionizes crafting process.', 2.45, 1, 3),
+	(75, 'High elf fashion takes Stormwind by storm.', 1.75, 1, 2),
+	(76, 'Lumber yield surges in Grizzly Hills.', 2.20, 1, 2),
+	(77, 'Global peace talks lower security costs.', 1.10, 1, 1),
+	(78, 'Sunwell stability boosts Sunfury production.', 2.30, 1, 2),
+	(79, 'Gurubashi Arena drives massive tourism.', 1.95, 1, 2),
+	(80, 'Expedition uncovers rare herbs.', 0.90, 1, 1),
+	(81, 'Elven crystals fetch high prices abroad.', 1.85, 1, 2),
+	(82, 'Smuggling ring dismantled by guards.', 2.00, 1, 2),
+	(83, 'Druidic rituals improve logging logistics.', 1.20, 1, 1),
+	(84, 'Favorable winds speed up sea trade.', 2.50, 1, 3),
+	(85, 'Alchemist cartel standardizes potion pricing.', 1.35, 1, 1),
+	(86, 'Popular bard concert sparks local spending.', 1.22, 1, 1),
+	(87, 'Portal hubs open in remote regions.', 2.25, 1, 2),
+	(88, 'Paladins bless regional crops.', 1.75, 1, 2),
+	(89, 'Cleric’s healing services subsidized.', 1.90, 1, 2),
+	(90, 'Orc raiders settle and invest in agriculture.', 2.40, 1, 3),
+	(91, 'Engineering guild improves machine output.', 2.70, 1, 3),
+	(92, 'Magical flux stabilizes prices.', 0.85, 1, 1),
+	(93, 'Cobalt demand from Northrend rises.', 2.10, 1, 2),
+	(94, 'Exodar trade station opens.', 1.25, 1, 1),
+	(95, 'New enchantment craze boosts material demand.', 2.85, 1, 3),
+	(96, 'Titan relic discovery revolutionizes industries.', 9.75, 1, 10),
+	(97, 'Bronze Dragonflight bring back Advanced Technologies!', 10.00, 1, 10),
+	(98, 'Demonic pact accidentally increases profits.', 9.20, 1, 10),
+	(99, 'Scourge resurgence cripples trade.', -2.90, 0, 3),
+	(100, 'Fire breaks out in key production district.', -2.50, 0, 3),
+	(101, 'Felstorm disrupts magic-based logistics.', -2.85, 0, 3),
+	(102, 'Taxation increase voted in by council.', -1.20, 0, 1),
+	(103, 'Booty Bay blockaded by pirates.', -2.70, 0, 3),
+	(104, 'Arcane instability collapses trade portal network.', -2.10, 0, 2),
+	(105, 'Seasonal shortage of enchanted lumber.', -1.55, 0, 2),
+	(106, 'Corruption scandal rocks noble house.', -1.85, 0, 2),
+	(107, 'Rare metal mine collapses.', -2.40, 0, 3),
+	(108, 'Plague outbreak lowers workforce.', -2.00, 0, 2),
+	(109, 'Storm damages farmland.', -1.50, 0, 2),
+	(110, 'Sabotage at gnomish factory.', -1.10, 0, 1),
+	(111, 'Mage strike shuts down research trade.', -1.90, 0, 2),
+	(112, 'Portal malfunction displaces goods.', -2.15, 0, 2),
+	(113, 'Harpy raids disrupt caravan routes.', -0.95, 0, 1),
+	(114, 'Economic downturn hits Ironforge.', -2.20, 0, 2),
+	(115, 'Diplomatic conflict halts treaty.', -1.75, 0, 2),
+	(116, 'Mining taxes increased.', -1.60, 0, 2),
+	(117, 'High elf fashion line flops.', -0.85, 0, 1),
+	(118, 'Shipments lost in storm.', -2.30, 0, 2),
+	(119, 'Political unrest in Orgrimmar.', -1.95, 0, 2),
+	(120, 'Pandemic returns in northern outposts.', -2.60, 0, 3),
+	(121, 'Arcane tariffs spike unexpectedly.', -1.30, 0, 1),
+	(122, 'Druid guild protests enchantment industry.', -1.75, 0, 2),
+	(123, 'Forge explosion halts metal output.', -2.80, 0, 3),
+	(124, 'Fel corruption poisons crops.', -1.90, 0, 2),
+	(125, 'Outlands instability scares investors.', -2.35, 0, 3),
+	(126, 'Nerubian tunnel collapses. Cutting off Cobalt Ore supply.', -2.25, 0, 3),
+	(127, 'Bandits rob major shipment.', -0.75, 0, 1),
+	(128, 'Goblin smuggling crackdown affects pricing.', -1.40, 0, 1),
+	(129, 'Currency deflation due to hoarding.', -2.05, 0, 2),
+	(130, 'Undead uprising blocks trade road.', -2.65, 0, 3),
+	(131, 'Troll unrest shuts down market square.', -1.55, 0, 2),
+	(132, 'Blight affects rare herb fields.', -2.10, 0, 2),
+	(133, 'Demonic incursion wrecks infrastructure.', -2.90, 0, 3),
+	(134, 'Sargeras announces he doesn\'t support the free market.', -9.95, 0, 10),
+	(135, 'Time warping Ethereals steal mass stockpiles.', -10.00, 0, 10),
+	(136, 'Voidlords attack the Trade District.', -9.40, 0, 10),
+	(137, 'Wilfred Fizzlebangs business flops after his death.', -0.66, 0, 2),
+	(138, 'Cairne Bloodhoof donates to Northrend Expeditionary forces.', 1.11, 1, 1),
+	(139, 'Investments pour into the Cut Gem market!', 1.20, 1, 1),
+	(140, 'An Extremely cool player is using this script! The citizens of Azeroth celebrate!', 2.30, 1, 2),
+	(141, 'Taxes from Dungeonfinder double in recent report.', 1.30, 1, 1),
+	(142, 'Ashenvale logs selling for triple typical market value. Logging companies profits soar!', 1.70, 1, 1),
+	(143, 'Leather prices plummet as Rogue nerf announced.', -0.60, 0, 1),
+	(144, 'Gold sellers causing rampant inflation.', -1.50, 0, 1),
+	(145, 'Mayonaise categorized as an instrument!', 0.30, 1, 1);
+
+/*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
+/*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
+/*!40014 SET FOREIGN_KEY_CHECKS=IFNULL(@OLD_FOREIGN_KEY_CHECKS, 1) */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40111 SET SQL_NOTES=IFNULL(@OLD_SQL_NOTES, 1) */;
