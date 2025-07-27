@@ -161,7 +161,7 @@ INSERT INTO `stockmarket_events` (`id`, `event_text`, `percent_change`, `is_posi
 	(131, 'Troll unrest shuts down market square.', -1.55, 0, 2),
 	(132, 'Blight affects rare herb fields.', -2.10, 0, 2),
 	(133, 'Demonic incursion wrecks infrastructure.', -2.90, 0, 3),
-	(134, 'Sargeras announces he doesn\'t support the free market.', -9.95, 0, 10),
+	(134, 'Sargeras announces he does not support the free market.', -9.95, 0, 10),
 	(135, 'Time warping Ethereals steal mass stockpiles.', -10.00, 0, 10),
 	(136, 'Voidlords attack the Trade District.', -9.40, 0, 10),
 	(137, 'Wilfred Fizzlebangs business flops after his death.', -0.66, 0, 2),
