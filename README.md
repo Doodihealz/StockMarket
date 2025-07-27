@@ -53,6 +53,7 @@ This script introduces a dynamic, in-game stock market system to World of Warcra
    - `Stockmarketcharacter.sql` — on the **characters** database.
    - `Stockmarketevents.sql` — on the **world** database.
    - `StockBroker.sql` — on the **world** database.
+   - `Stockmarket_events.sql` — on the **world** database.
 
    > NPC uses Entry ID `90001` and Display ID `27822`. If you use a different entry, update it in the Lua file.
 
