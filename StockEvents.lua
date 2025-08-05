@@ -58,7 +58,7 @@ local function Deposit(p, c)
     end
 
     p:ModifyMoney(-c)
-    CharDBExecute(("INSERT INTO character_stockmarket (account,InvestedMoney,last_updated) VALUES(%d,%d,NOW()) ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + VALUES(InvestedMoney), last_updated = NOW()"):format(acc, c))
+    CharDBExecute(("INSERT INTO character_stockmarket (account,InvestedMoney,last_updated) VALUES(%.0f,%.0f,NOW()) ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + VALUES(InvestedMoney), last_updated = NOW()"):format(acc, c))
 
     local investedNew = 0
     do
@@ -76,8 +76,13 @@ local function Deposit(p, c)
     pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
     local pctStr = ("%+.2f%%"):format(pctDelta)
 
-    CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%d, %d, %d, %d, '%s', %.2f, 'Deposit: %s', NOW())")
-        :format(acc, guid, __NEXT_LOG_EVENT_ID__, c, pctStr, investedNew / 10000, GetActiveStockEvent().text))
+    local eventId = GetActiveStockEvent().id
+    if eventId == "NULL" or type(eventId) ~= "number" then
+        eventId = __NEXT_LOG_EVENT_ID__
+    end
+
+    CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%.0f, %.0f, %.0f, %.0f, '%s', %.2f, 'Deposit: %s', NOW())")
+        :format(acc, guid, eventId, c, pctStr, investedNew / 10000, GetActiveStockEvent().text))
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 
     p:SendBroadcastMessage(("|cff00ff00[StockMarket]|r Deposit successful: %dg (+%s)"):format(c / 10000, pctStr))
@@ -114,15 +119,20 @@ local function Withdraw(p, c)
 
     local investedNew = investedOld - c
     p:ModifyMoney(c)
-    CharDBExecute(("UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE account = %d"):format(investedNew, acc))
+    CharDBExecute(("UPDATE character_stockmarket SET InvestedMoney = %.0f, last_updated = NOW() WHERE account = %.0f"):format(investedNew, acc))
 
     local changeAmt = -c
     local pctDelta = investedOld > 0 and (changeAmt / investedOld) * 100 or 0
     pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
     local pctStr = ("%+.2f%%"):format(pctDelta)
 
-    CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%d, %d, %d, %d, '%s', %.2f, 'Withdraw', NOW())")
-        :format(acc, guid, GetActiveStockEvent().id, changeAmt, pctStr, investedNew / 10000))
+    local eventId = GetActiveStockEvent().id
+    if eventId == "NULL" or type(eventId) ~= "number" then
+        eventId = __NEXT_LOG_EVENT_ID__
+    end
+
+    CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%.0f, %.0f, %.0f, %.0f, '%s', %.2f, 'Withdraw', NOW())")
+        :format(acc, guid, eventId, changeAmt, pctStr, investedNew / 10000))
 
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 
@@ -138,6 +148,31 @@ local function QueryInvestment(p)
         :format(g, s, co))
 end
 
+local function safeGetFloat(query, column, defaultValue)
+    if not query or query:IsNull(column) then
+        return defaultValue or 0
+    end
+    
+    local value = query:GetFloat(column)
+    value = tonumber(value) or (defaultValue or 0)
+    
+    -- Check for NaN, infinity, and extreme values as per Eluna documentation
+    if value ~= value then -- NaN check
+        return defaultValue or 0
+    end
+    
+    if value == math.huge or value == -math.huge then
+        return defaultValue or 0
+    end
+    
+    -- Range check for safe formatting
+    if math.abs(value) > 1e4 then
+        return defaultValue or 0
+    end
+    
+    return value
+end
+
 local function GetRandomStockEvent()
     local q = WorldDBQuery("SELECT id, event_text, percent_change, is_positive, rarity FROM stockmarket_events")
     if not q then return nil end
@@ -146,8 +181,7 @@ local function GetRandomStockEvent()
     repeat
         local id = q:GetUInt32(0)
         local text = q:GetString(1)
-        local change = tonumber(q:GetFloat(2)) or 0
-        if change ~= change or math.abs(change) > 1e4 then change = 0 end
+        local change = safeGetFloat(q, 2, 0)  -- Use safe extraction
         local positive = q:GetUInt8(3) == 1
         local rarity = q:GetUInt8(4)
         local weight = 1 / (rarity + 1) + (positive and 0.05 or 0)
@@ -175,12 +209,18 @@ local function TriggerHourlyEvent(isManual)
     local e = GetRandomStockEvent()
     if not e then return end
 
-    print(("[StockMarket] Triggering event: %s (%+.2f%%)"):format(e.text, e.change))
+    -- Additional safety check for e.change before formatting (per Eluna best practices)
+    local safeChange = e.change
+    if type(safeChange) ~= "number" or safeChange ~= safeChange or safeChange == math.huge or safeChange == -math.huge then
+        safeChange = 0
+    end
+
+    print(("[StockMarket] Triggering event: %s (%+.2f%%)"):format(e.text, safeChange))
 
     local color = e.positive and "|cff00ff00" or "|cffff0000"
-    SendWorldMessage(("[StockMarket] %s: %s%+.2f%%%s"):format(e.text, color, e.change, "|r"))
+    SendWorldMessage(("[StockMarket] %s: %s%+.2f%%%s"):format(e.text, color, safeChange, "|r"))
 
-    local m = 1 + (e.change / 100)
+    local m = 1 + (safeChange / 100)
     local q = CharDBQuery("SELECT account, InvestedMoney FROM character_stockmarket WHERE InvestedMoney > 0")
     if q then
         repeat
@@ -192,11 +232,17 @@ local function TriggerHourlyEvent(isManual)
             pctDelta = math.floor(pctDelta * 100 + 0.5) / 100
             local pctStr = ("%+.2f%%"):format(pctDelta)
 
-            CharDBExecute(("UPDATE character_stockmarket SET InvestedMoney = %d, last_updated = NOW() WHERE account = %d")
+            -- Ensure e.id is a valid number
+            local eventId = e.id
+            if type(eventId) ~= "number" then
+                eventId = tonumber(eventId) or __NEXT_LOG_EVENT_ID__
+            end
+
+            CharDBExecute(("UPDATE character_stockmarket SET InvestedMoney = %.0f, last_updated = NOW() WHERE account = %.0f")
                 :format(investedNew, account))
 
-            CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%d, %d, %d, %d, '%s', %.2f, 'Market Event: %s', NOW())")
-                :format(account, 0, e.id, delta, pctStr, investedNew / 10000, e.text))
+            CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%.0f, %.0f, %.0f, %.0f, '%s', %.2f, 'Market Event: %s', NOW())")
+                :format(account, 0, eventId, delta, pctStr, investedNew / 10000, e.text))
         until not q:NextRow()
     end
 
@@ -234,6 +280,8 @@ RegisterPlayerEvent(42, function(_, player, command)
 
     local validCommands = {
         stockdata = true,
+        stockdeposit = true,
+        stockwithdraw = true,
         stockhelp = true,
         stocktimer = true,
         stockevent = true
@@ -256,9 +304,24 @@ RegisterPlayerEvent(42, function(_, player, command)
 
     if cmd == "stockdata" then
         QueryInvestment(player)
+    elseif cmd == "stockdeposit" then
+        if arg and arg > 0 then
+            Deposit(player, arg * 10000)
+        else
+            Deposit(player, player:GetCoinage())
+        end
+    elseif cmd == "stockwithdraw" then
+        if arg and arg > 0 then
+            Withdraw(player, arg * 10000)
+        else
+            local invested = GetInvested(player:GetAccountId()) or 0
+            Withdraw(player, invested)
+        end
     elseif cmd == "stockhelp" then
         player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Available commands:")
         player:SendBroadcastMessage("|cffffff00.stockdata|r       View investment")
+        player:SendBroadcastMessage("|cffffff00.stockdeposit [gold]|r  Deposit gold (0 = all)")
+        player:SendBroadcastMessage("|cffffff00.stockwithdraw [gold]|r Withdraw gold (0 = all)")
         player:SendBroadcastMessage("|cffffff00.stocktimer|r      Time to next event")
         player:SendBroadcastMessage("|cffffff00.stockevent|r      Trigger event (GM)")
     elseif cmd == "stocktimer" then
@@ -274,17 +337,17 @@ RegisterPlayerEvent(42, function(_, player, command)
     elseif cmd == "stockevent" then
         if not player:IsGM() or not player:IsGMVisible() then
             player:SendBroadcastMessage("|cffff0000[StockMarket]|r GM mode required.")
-            return false
+        else
+            TriggerHourlyEvent(true)
+            player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Stock market event triggered.")
         end
-        TriggerHourlyEvent(true)
-        player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Stock market event triggered.")
     end
 
     return false
 end)
 
 RegisterPlayerEvent(3, function(_, player)
-    local remaining = __NEXT_STOCK_EVENT_TIME__ - os.time()
+    local remaining = (__NEXT_STOCK_EVENT_TIME__ or os.time()) - os.time()
     if remaining > 0 then
         player:SendBroadcastMessage(("[StockMarket] Next market event in %d minute%s."):format(
             math.ceil(remaining / 60),
