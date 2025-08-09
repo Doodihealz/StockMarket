@@ -3,9 +3,24 @@ _G.__STOCKMARKET_CLEAN__ = true
 
 math.randomseed(os.time())
 
-local GOLD_CAP_COPPER = 2147483647
-
+local GOLD_CAP_COPPER = 10000000000
 local floor = math.floor
+local min, max = math.min, math.max
+
+local function safe_number(v, default)
+    if type(v) ~= "number" or v ~= v or v == math.huge or v == -math.huge then
+        return default or 0
+    end
+    return v
+end
+
+local function qnum(q, col, default)
+    if not q or q:IsNull(col) then return default or 0 end
+    local s = q:GetString(col)
+    local n = tonumber(s)
+    if not n or n ~= n or n == math.huge or n == -math.huge then return default or 0 end
+    return n
+end
 
 local __NEXT_LOG_EVENT_ID__ = (function()
     local q = CharDBQuery("SELECT MAX(event_id) FROM character_stockmarket_log")
@@ -15,19 +30,9 @@ local __STOCKDATA_COOLDOWNS__ = {}
 
 CharDBExecute("DELETE FROM character_stockmarket_log WHERE created_at < NOW() - INTERVAL 1 DAY")
 
-local function safe_number(v, default)
-    if type(v) ~= "number" or v ~= v or v == math.huge or v == -math.huge then
-        return default or 0
-    end
-    return v
-end
-
 local function GetInvested(account)
     local q = CharDBQuery("SELECT InvestedMoney FROM character_stockmarket WHERE account = " .. account)
-    if not q then
-        print("[StockMarket] Database query failed for GetInvested (Account: " .. account .. ")")
-        return nil, "db_error"
-    end
+    if not q then return nil, "db_error" end
     local row = q:GetRow(0)
     if not row then return 0 end
     return tonumber(row.InvestedMoney) or 0
@@ -44,18 +49,15 @@ end, 86400000, 0)
 local function Deposit(p, c)
     local acc = p:GetAccountId()
     local guid = p:GetGUIDLow()
-
     if type(c) ~= "number" or c < 10000 then
         p:SendBroadcastMessage("|cffff0000[StockMarket]|r Minimum deposit is 1 gold."); return
     elseif p:GetCoinage() < c then
         p:SendBroadcastMessage("|cffff0000[StockMarket]|r Not enough funds."); return
     end
-
     local investedOld, err = GetInvested(acc)
     if err == "db_error" then
         p:SendBroadcastMessage("|cffff0000[StockMarket]|r Error accessing investment data."); return
     end
-
     if investedOld + c > GOLD_CAP_COPPER then
         local maxDeposit = GOLD_CAP_COPPER - investedOld
         if maxDeposit <= 0 then
@@ -65,27 +67,21 @@ local function Deposit(p, c)
         p:SendBroadcastMessage(("|cffff0000[StockMarket]|r Deposit would exceed gold cap. Max: %dg %ds %dc."):format(g, s, co))
         return
     end
-
     p:ModifyMoney(-c)
     CharDBExecute(("INSERT INTO character_stockmarket (account,InvestedMoney,last_updated) VALUES(%.0f,%.0f,NOW()) ON DUPLICATE KEY UPDATE InvestedMoney = InvestedMoney + VALUES(InvestedMoney), last_updated = NOW()"):format(acc, c))
-
     local investedNew = investedOld + c
     investedNew = safe_number(investedNew, investedOld)
-
     local pctDelta = investedOld > 0 and (c / investedOld) * 100 or 100
     pctDelta = floor(pctDelta * 100 + 0.5) / 100
     local pctStr = ("%+.2f%%"):format(pctDelta)
-
     local active = GetActiveStockEvent()
     local eventId = active.id
     if eventId == "NULL" or type(eventId) ~= "number" then
         eventId = __NEXT_LOG_EVENT_ID__
     end
-
     CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%.0f, %.0f, %.0f, %.0f, '%s', %.2f, 'Deposit: %s', NOW())")
         :format(acc, guid, eventId, c, pctStr, investedNew / 10000, active.text))
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
-
     p:SendBroadcastMessage(("|cff00ff00[StockMarket]|r Deposit successful: %dg (+%s)"):format(c / 10000, pctStr))
     p:SendBroadcastMessage(("|cff00ff00[StockMarket]|r Total invested: %dg"):format(investedNew / 10000))
 end
@@ -93,20 +89,16 @@ end
 local function Withdraw(p, c)
     local acc = p:GetAccountId()
     local guid = p:GetGUIDLow()
-
     if type(c) ~= "number" or c < 1 then
         p:SendBroadcastMessage("|cffff0000[StockMarket]|r Minimum withdraw is 1 copper."); return
     end
-
     local investedOld, err = GetInvested(acc)
     if err == "db_error" then
         p:SendBroadcastMessage("|cffff0000[StockMarket]|r Error accessing investment data."); return
     end
-
     if c > investedOld then
         p:SendBroadcastMessage("|cffff0000[StockMarket]|r Insufficient invested funds."); return
     end
-
     local currentMoney = p:GetCoinage()
     if currentMoney + c > GOLD_CAP_COPPER then
         local maxWithdraw = GOLD_CAP_COPPER - currentMoney
@@ -117,26 +109,20 @@ local function Withdraw(p, c)
         p:SendBroadcastMessage(("|cffff0000[StockMarket]|r Withdraw would exceed gold cap. Max: %dg %ds %dc."):format(g, s, co))
         return
     end
-
     local investedNew = investedOld - c
     p:ModifyMoney(c)
     CharDBExecute(("UPDATE character_stockmarket SET InvestedMoney = %.0f, last_updated = NOW() WHERE account = %.0f"):format(investedNew, acc))
-
     local changeAmt = -c
     local pctDelta = investedOld > 0 and (changeAmt / investedOld) * 100 or 0
     pctDelta = floor(pctDelta * 100 + 0.5) / 100
     local pctStr = ("%+.2f%%"):format(pctDelta)
-
     local eventId = GetActiveStockEvent().id
     if eventId == "NULL" or type(eventId) ~= "number" then
         eventId = __NEXT_LOG_EVENT_ID__
     end
-
     CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%.0f, %.0f, %.0f, %.0f, '%s', %.2f, 'Withdraw', NOW())")
         :format(acc, guid, eventId, changeAmt, pctStr, investedNew / 10000))
-
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
-
     p:SendBroadcastMessage(("|cff00ff00[StockMarket]|r Withdraw successful: %dg (~%s)"):format(c / 10000, pctStr))
     p:SendBroadcastMessage(("|cff00ff00[StockMarket]|r Total invested: %dg"):format(investedNew / 10000))
 end
@@ -193,33 +179,28 @@ end
 local function TriggerHourlyEvent(isManual)
     local e = GetRandomStockEvent()
     if not e then return end
-
     local safeChange = safe_number(e.change, 0)
     print(("[StockMarket] Triggering event: %s (%+.2f%%)"):format(e.text, safeChange))
-
     local color = e.positive and "|cff00ff00" or "|cffff0000"
     SendWorldMessage(("[StockMarket] %s: %s%+.2f%%%s"):format(e.text, color, safeChange, "|r"))
-
     local m = 1 + (safeChange / 100)
     local q = CharDBQuery("SELECT account, InvestedMoney FROM character_stockmarket WHERE InvestedMoney > 0")
     if q then
         repeat
             local account     = q:GetUInt32(0)
-            local investedOld = q:GetUInt32(1)
-            local investedNew = floor(investedOld * m)
+            local investedOld = qnum(q, 1, 0)
+            local investedNewRaw = floor(investedOld * m)
+            local investedNew = max(0, min(GOLD_CAP_COPPER, investedNewRaw))
             local delta       = investedNew - investedOld
             local pctDelta    = investedOld > 0 and (delta / investedOld) * 100 or 0
             pctDelta = floor(pctDelta * 100 + 0.5) / 100
             local pctStr = ("%+.2f%%"):format(pctDelta)
-
             CharDBExecute(("UPDATE character_stockmarket SET InvestedMoney = %.0f, last_updated = NOW() WHERE account = %.0f")
                 :format(investedNew, account))
-
             CharDBExecute(("INSERT INTO character_stockmarket_log (account, guid, event_id, change_amount, percent_change, resulting_gold, description, created_at) VALUES(%.0f, %.0f, %.0f, %.0f, '%s', %.2f, 'Market Event: %s', NOW())")
                 :format(account, 0, e.id, delta, pctStr, investedNew / 10000, e.text))
         until not q:NextRow()
     end
-
     _G.__CURRENT_STOCK_EVENT__ = e
     __NEXT_LOG_EVENT_ID__ = __NEXT_LOG_EVENT_ID__ + 1
 end
@@ -228,7 +209,6 @@ local function ScheduleNextStockEvent()
     local delay = math.random(900000, 1800000)
     _G.__NEXT_STOCK_EVENT_TIME__ = os.time() + floor(delay / 1000)
     print(string.format("[StockMarket] Scheduling next event in %d minute%s", floor(delay / 60000), floor(delay / 60000) == 1 and "" or "s"))
-
     CreateLuaEvent(function()
         TriggerHourlyEvent(false)
         ScheduleNextStockEvent()
@@ -247,25 +227,20 @@ ScheduleNextStockEvent()
 
 RegisterPlayerEvent(42, function(_, player, command)
     if not player or not command then return end
-
     local cmd, arg = command:match("^(%S+)%s*(.*)$")
     cmd = cmd and cmd:lower():gsub("[#./]", "") or ""
     arg = tonumber(arg)
-
     local valid = { stockdata=true, stockdeposit=true, stockwithdraw=true, stockhelp=true, stocktimer=true, stockevent=true }
     if not valid[cmd] then return end
-
     local now = os.time()
     local acc = player:GetAccountId()
     local key = acc .. "_" .. cmd
-
     __STOCKDATA_COOLDOWNS__[key] = __STOCKDATA_COOLDOWNS__[key] or 0
     if now - __STOCKDATA_COOLDOWNS__[key] < 300 then
         player:SendBroadcastMessage("|cffffcc00[StockMarket]|r You can only use this command once every 5 minutes.")
         return false
     end
     __STOCKDATA_COOLDOWNS__[key] = now
-
     if cmd == "stockdata" then
         QueryInvestment(player)
     elseif cmd == "stockdeposit" then
@@ -299,7 +274,6 @@ RegisterPlayerEvent(42, function(_, player, command)
             player:SendBroadcastMessage("|cff00ff00[StockMarket]|r Stock market event triggered.")
         end
     end
-
     return false
 end)
 
